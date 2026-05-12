@@ -9,15 +9,17 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 """
 
 import sys
+import tempfile
 from pathlib import Path
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings  # type: ignore
 import struct
+import pytest  # type: ignore
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from AegisScanner.detectors.entropy_analyzer import EntropyAnalyzer
-from AegisScanner.detectors.pcr_replay import PCRReplay
+from AegisScanner.detectors.pcr_replay import PCRReplayEngine
 
 
 class TestEntropyProperties:
@@ -77,11 +79,12 @@ class TestPCRProperties:
     @settings(max_examples=100)
     def test_pcr_extend_deterministic(self, event_data):
         """Property: PCR extend is deterministic."""
-        pcr_replay = PCRReplay()
+        pcr_replay1 = PCRReplayEngine()
+        pcr_replay2 = PCRReplayEngine()
         
         # Extend with same data twice
-        pcr1 = pcr_replay._extend_pcr(b'\x00' * 32, event_data)
-        pcr2 = pcr_replay._extend_pcr(b'\x00' * 32, event_data)
+        pcr1 = pcr_replay1.extend_pcr(0, event_data)
+        pcr2 = pcr_replay2.extend_pcr(0, event_data)
         
         assert pcr1 == pcr2, "PCR extend must be deterministic"
     
@@ -89,9 +92,9 @@ class TestPCRProperties:
     @settings(max_examples=100)
     def test_pcr_extend_produces_valid_hash(self, event_data):
         """Property: PCR extend always produces 32-byte hash."""
-        pcr_replay = PCRReplay()
+        pcr_replay = PCRReplayEngine()
         
-        result = pcr_replay._extend_pcr(b'\x00' * 32, event_data)
+        result = pcr_replay.extend_pcr(0, event_data)
         
         assert len(result) == 32, f"PCR must be 32 bytes, got {len(result)}"
         assert isinstance(result, bytes), "PCR must be bytes"
@@ -103,14 +106,15 @@ class TestPCRProperties:
     @settings(max_examples=100)
     def test_pcr_extend_order_matters(self, data1, data2):
         """Property: PCR extend order affects result."""
-        pcr_replay = PCRReplay()
+        pcr_replay = PCRReplayEngine()
         
         # Extend in different orders
-        pcr_a = pcr_replay._extend_pcr(b'\x00' * 32, data1)
-        pcr_a = pcr_replay._extend_pcr(pcr_a, data2)
+        pcr_replay.extend_pcr(0, data1)
+        pcr_a = pcr_replay.extend_pcr(0, data2)
         
-        pcr_b = pcr_replay._extend_pcr(b'\x00' * 32, data2)
-        pcr_b = pcr_replay._extend_pcr(pcr_b, data1)
+        pcr_replay2 = PCRReplayEngine()
+        pcr_replay2.extend_pcr(0, data2)
+        pcr_b = pcr_replay2.extend_pcr(0, data1)
         
         if data1 != data2:
             assert pcr_a != pcr_b, "Different extend order should produce different PCR"
@@ -126,6 +130,7 @@ class TestDetectorRobustness:
         import tempfile
         
         # Test entropy analyzer
+        analyzer = None
         try:
             analyzer = EntropyAnalyzer()
             entropies = analyzer.calculate_entropy(data)
@@ -133,18 +138,19 @@ class TestDetectorRobustness:
         except Exception as e:
             pytest.fail(f"EntropyAnalyzer crashed: {e}")
         
-        # Test with file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as f:
-            f.write(data)
-            temp_path = f.name
-        
-        try:
-            findings = analyzer.detect(temp_path)
-            assert isinstance(findings, list)
-        except Exception as e:
-            pytest.fail(f"Detector crashed on file: {e}")
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
+        # Test with file only if analyzer was created successfully
+        if analyzer is not None:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as f:
+                f.write(data)
+                temp_path = f.name
+            
+            try:
+                findings = analyzer.detect(temp_path)
+                assert isinstance(findings, list)
+            except Exception as e:
+                pytest.fail(f"Detector crashed on file: {e}")
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
     
     @given(st.binary(min_size=64, max_size=1024))
     @settings(max_examples=100)
@@ -190,7 +196,6 @@ class TestStructureValidation:
 
 
 if __name__ == "__main__":
-    import pytest
     pytest.main([__file__, "-v", "--hypothesis-show-statistics"])
 
 
