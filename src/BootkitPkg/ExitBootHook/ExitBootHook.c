@@ -290,6 +290,16 @@ AllocateRuntimeMemory (
 
   *Memory = (VOID *)(UINTN)Address;
 
+  //
+  // Zero the memory
+  //
+  ZeroMem (*Memory, Size);
+
+  //
+  // Write a signature to verify persistence
+  //
+  *(UINT32 *)(*Memory) = EXIT_BOOT_HOOK_SIGNATURE;
+
   DEBUG ((
     DEBUG_INFO,
     "[ExitBoot] Allocated %d pages (%d bytes) at 0x%lx\n",
@@ -319,26 +329,6 @@ FreeRuntimeMemory (
   // Freeing it would cause system instability
   //
   DEBUG ((DEBUG_WARN, "[ExitBoot] FreeRuntimeMemory called - this is a no-op\n"));
-  return EFI_SUCCESS;
-  }
-
-  //
-  // Zero the memory
-  //
-  ZeroMem (*Memory, Size);
-
-  //
-  // Write a signature to verify persistence
-  //
-  *(UINT32 *)(*Memory) = EXIT_BOOT_HOOK_SIGNATURE;
-
-  DEBUG ((
-    DEBUG_INFO,
-    "[ExitBoot] Allocated %lu bytes at 0x%p (EfiRuntimeServicesCode)\n",
-    (UINT64)Size,
-    *Memory
-    ));
-
   return EFI_SUCCESS;
 }
 
