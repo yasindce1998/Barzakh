@@ -37,7 +37,7 @@ class TestScannerIntegration:
         """Test scanner initializes correctly."""
         assert self.scanner is not None
         assert self.scanner.baseline is None
-        assert len(self.scanner.detectors) == 11
+        assert len(self.scanner.detectors) == 12
         assert 'pcr' in self.scanner.detectors
         assert 'memory' in self.scanner.detectors
         assert 'hook' in self.scanner.detectors

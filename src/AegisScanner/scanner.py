@@ -29,6 +29,7 @@ try:
     from .detectors.fv_parser import FirmwareVolumeParser
     from .detectors.spi_integrity_detector import SpiIntegrityDetector
     from .detectors.self_erasure_detector import SelfErasureDetector
+    from .pcr_oracle.oracle import PCROracle
     from .reports.report_generator import ReportGenerator
 except ImportError:
     from detectors.pcr_detector import PCRDetector
@@ -42,6 +43,7 @@ except ImportError:
     from detectors.fv_parser import FirmwareVolumeParser
     from detectors.spi_integrity_detector import SpiIntegrityDetector
     from detectors.self_erasure_detector import SelfErasureDetector
+    from pcr_oracle.oracle import PCROracle
     from reports.report_generator import ReportGenerator
 
 
@@ -71,6 +73,7 @@ class AegisScanner:
             'firmware_volume': FirmwareVolumeParser(),
             'spi_integrity': SpiIntegrityDetector(self.baseline),
             'self_erasure': SelfErasureDetector(self.baseline),
+            'pcr_oracle': PCROracle(),
         }
         self.use_enhanced_hook_detector = use_enhanced_hook_detector
         self.findings = []
@@ -297,7 +300,7 @@ def main():
         choices=[
             'pcr', 'memory', 'hook', 'eventlog', 'entropy',
             'secureboot', 'runtime', 'smm', 'firmware_volume',
-            'spi_integrity', 'self_erasure'
+            'spi_integrity', 'self_erasure', 'pcr_oracle'
         ],
         help='Types of scans to perform (default: all)'
     )
