@@ -114,7 +114,7 @@ fn agtt_trace_with_hook() -> Vec<u8> {
 #[test]
 fn test_scanner_creation_with_all_detectors() {
     let scanner = BarzakhScanner::new(None);
-    assert_eq!(scanner.detector_count(), 18);
+    assert_eq!(scanner.detector_count(), 30);
 }
 
 #[test]

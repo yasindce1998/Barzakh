@@ -1,0 +1,38 @@
+## @file
+# AMT Serial-over-LAN Channel Emulation Module
+#
+# Emulates covert Command & Control (C2) communication over Intel Active
+# Management Technology (AMT) Serial-over-LAN (SOL). Models PCI device
+# enumeration, AMT provisioning, and bidirectional C2 traffic invisible
+# to host OS security tools (Platinum APT technique).
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = AmtSolChannel
+  FILE_GUID                      = B1C2D3E4-5678-9ABC-DEF0-111111111103
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = AmtSolChannelEntry
+
+[Sources]
+  AmtSolChannel.c
+  AmtSolChannel.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

@@ -1,0 +1,37 @@
+## @file
+# ME DMA Attack Emulation Module
+#
+# Simulates Intel Management Engine's independent DMA engine accessing
+# host memory. Demonstrates how ME can read/write host physical memory
+# independently of the host CPU.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = MeDmaAttack
+  FILE_GUID                      = B1C2D3E4-5678-9ABC-DEF0-111111111105
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = MeDmaAttackEntry
+
+[Sources]
+  MeDmaAttack.c
+  MeDmaAttack.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

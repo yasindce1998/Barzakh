@@ -1,0 +1,37 @@
+## @file
+# ME SPI Manipulation Emulation Module
+#
+# Emulates direct manipulation of the Intel Management Engine (ME) region
+# within the SPI flash descriptor. Models SPI controller discovery, flash
+# descriptor parsing, ME region boundary modification, and persistence.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = MeSpiManipulation
+  FILE_GUID                      = B1C2D3E4-5678-9ABC-DEF0-111111111102
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = MeSpiManipulationEntry
+
+[Sources]
+  MeSpiManipulation.c
+  MeSpiManipulation.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

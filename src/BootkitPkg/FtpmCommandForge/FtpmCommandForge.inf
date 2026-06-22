@@ -1,0 +1,38 @@
+## @file
+# fTPM Command Forge Emulation Module
+#
+# Emulates AMD firmware TPM (fTPM) command forgery against the Platform
+# Security Processor (PSP). Models C2P/P2C shared buffer manipulation,
+# TPM2 command header construction, and response injection to subvert
+# PCR-based measurements.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = FtpmCommandForge
+  FILE_GUID                      = B1C2D3E4-5678-9ABC-DEF0-111111111104
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = FtpmCommandForgeEntry
+
+[Sources]
+  FtpmCommandForge.c
+  FtpmCommandForge.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

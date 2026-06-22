@@ -1,0 +1,37 @@
+## @file
+# HECI Intercept Emulation Module
+#
+# Emulates Host Embedded Controller Interface (HECI) bus traffic interception
+# between the host CPU and Intel Management Engine. Models PCI device
+# enumeration, MMIO register mapping, and circular buffer message snooping.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = HeciIntercept
+  FILE_GUID                      = B1C2D3E4-5678-9ABC-DEF0-111111111101
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = HeciInterceptEntry
+
+[Sources]
+  HeciIntercept.c
+  HeciIntercept.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

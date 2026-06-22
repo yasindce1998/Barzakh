@@ -108,6 +108,15 @@
   BootkitPkg/VirtualAddressMapHook/VirtualAddressMapHook.inf
   BootkitPkg/PciOptionRom/PciOptionRom.inf
 
+  #
+  # Ring -3 (Intel ME / AMD PSP) Emulation Modules
+  #
+  BootkitPkg/HeciIntercept/HeciIntercept.inf
+  BootkitPkg/MeSpiManipulation/MeSpiManipulation.inf
+  BootkitPkg/AmtSolChannel/AmtSolChannel.inf
+  BootkitPkg/FtpmCommandForge/FtpmCommandForge.inf
+  BootkitPkg/MeDmaAttack/MeDmaAttack.inf
+
 [BuildOptions]
   # Enable security features
   GCC:*_*_*_CC_FLAGS = -DBARZAKH_RESEARCH=1
