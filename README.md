@@ -50,30 +50,41 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 
 ## 🏗️ Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        BARZAKH RESEARCH PLATFORM                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─── OFFENSE (Emulation) ───┐     ┌─── DEFENSE (Detection) ────────────┐  │
-│  │                           │     │                                     │  │
-│  │  Ring 0: DXE/Boot Hooks   │────▶│  30 Rust Detectors                 │  │
-│  │  Ring -1: SMM Persistence │────▶│  ├─ PCR/TPM Attestation (4)        │  │
-│  │  Ring -2: ME/PSP Attacks  │────▶│  ├─ Memory/Hook Analysis (5)       │  │
-│  │  Ring -3: DMA/Flash/fTPM  │────▶│  ├─ Firmware Structure (6)         │  │
-│  │                           │     │  ├─ Secure Boot/Chain (3)           │  │
-│  │  AArch64: EL3/TrustZone  │     │  ├─ Behavioral Heuristics (6)      │  │
-│  │  RISC-V: M-Mode Hooks    │     │  └─ Ring -3 Subsystem (6)          │  │
-│  └───────────────────────────┘     └─────────────────────────────────────┘  │
-│           │                                         ▲                       │
-│           ▼                                         │                       │
-│  ┌─── ADVERSARY (Red Team) ──┐                      │                       │
-│  │  17 Payload Generators    │──── generate ────────┘                       │
-│  │  Corpus Builder           │     scan → assert detection                  │
-│  │  TPR/FPR Measurement      │                                              │
-│  └───────────────────────────┘                                              │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Offense["⚔️ OFFENSE — Emulation (31 C Modules)"]
+        R0[Ring 0: DXE / Boot Hooks]
+        R1[Ring -1: SMM Persistence]
+        R2[Ring -2: ME / PSP Attacks]
+        R3[Ring -3: DMA / Flash / fTPM]
+        ARM[AArch64: EL3 / TrustZone]
+        RV[RISC-V: M-Mode Hooks]
+    end
+
+    subgraph Defense["🛡️ DEFENSE — Detection (30 Rust Detectors)"]
+        D1[PCR / TPM Attestation]
+        D2[Memory & Hook Analysis]
+        D3[Firmware Structure]
+        D4[Secure Boot Chain]
+        D5[Behavioral Heuristics]
+        D6[Ring -3 Subsystem]
+    end
+
+    subgraph Adversary["🎯 ADVERSARY — Red Team (17 Payloads)"]
+        GEN[Payload Generators]
+        CORPUS[Corpus Builder]
+        METRIC[TPR / FPR Measurement]
+    end
+
+    R0 --> D2
+    R1 --> D5
+    R2 --> D6
+    R3 --> D6
+    ARM --> D3
+    RV --> D3
+
+    GEN -->|"generate tampered images"| Defense
+    Defense -->|"scan → assert detection"| METRIC
 ```
 
 ---
@@ -482,9 +493,7 @@ This project models real-world threats including BlackLotus, CosmicStrand, LoJax
 ## 📞 Contact
 
 **Principal Investigator:** Yasin  
-**Institution:** Dead Lock Corp  
-**Email:** yasindce1998@gmail.com  
-**Security Reports:** security@deadlockcorp.edu
+**Email:** yasindce1998@gmail.com
 
 ---
 
