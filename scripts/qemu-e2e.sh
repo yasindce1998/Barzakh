@@ -519,11 +519,10 @@ run_scanner() {
 
     cd "$PROJECT_ROOT"
 
-    "$scanner_bin" \
+    "$scanner_bin" scan \
         --target "$dump_file" \
-        --report \
-        --format json \
-        --output scan_results.json
+        --report scan_results.json \
+        --format json
 
     if [[ -f "scan_results.json" ]]; then
         cp scan_results.json "$DUMPS_DIR/scan_results.json"
