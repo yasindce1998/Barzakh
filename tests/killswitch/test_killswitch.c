@@ -264,7 +264,7 @@ static void test_parse_uuid_missing_dashes(void) {
 static void test_parse_uuid_wrong_dash_positions(void) {
   TEST("ParseUuidString: dashes in wrong positions");
   UINT8 bytes[16];
-  ASSERT_EQ(EFI_INVALID_PARAMETER, ParseUuidString("01234567-89ab-cdef-0123-4567-9abcdef", bytes));
+  ASSERT_EQ(EFI_INVALID_PARAMETER, ParseUuidString("0123-4567-89ab-cdef-0123456789abcdef", bytes));
   TEST_END;
 }
 
