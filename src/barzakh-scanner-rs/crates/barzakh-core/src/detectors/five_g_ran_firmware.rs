@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn fires_on_hooked_gnb_firmware() {
         let mut v = Vec::new();
-        v.extend_from_slice(b"gNB-DU firmware O-RAN v2.0\n");
+        v.extend_from_slice(b"gNB-DU firmware O-RAN v2.0\n\0");
         for _ in 0..8 {
             v.extend_from_slice(&[0xE5, 0x9F, 0xF0, 0x00]);
             v.extend_from_slice(&[0x00; 60]);

@@ -6,7 +6,7 @@
 
 **The most comprehensive open-source UEFI firmware security research platform**
 
-*Offense emulation from Ring 0 to Ring -4 | 105 detection engines | Closed-loop adversary validation*
+*Offense emulation from Ring 0 to Ring -4 | 121 detection engines | Closed-loop adversary validation*
 
 [![CI](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml/badge.svg)](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange)](src/barzakh-scanner-rs/)
@@ -251,7 +251,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 3. Barzakh Adversary — Red-Team Payload Generator (Rust)
 
-**Standalone binary: `barzakh-adversary`** | **94 payload generators** that produce realistic tampered firmware images for detection validation:
+**Standalone binary: `barzakh-adversary`** | **116 payload generators** that produce realistic tampered firmware images for detection validation:
 
 ```bash
 # Standalone CLI commands (no cargo required — use the release binary)
@@ -425,9 +425,9 @@ barzakh/
 │   │   ├── TpmAttestation/         # PCR monitoring
 │   │   └── EventLogExtractor/      # TCG event log parsing
 │   └── barzakh-scanner-rs/         # Rust workspace
-│       ├── crates/barzakh-core/    # Detection engine (105 detectors)
+│       ├── crates/barzakh-core/    # Detection engine (121 detectors)
 │       ├── crates/barzakh-cli/     # CLI binaries (barzakh-scanner + barzakh-adversary)
-│       └── crates/barzakh-adversary/ # Red-team library (94 payload generators)
+│       └── crates/barzakh-adversary/ # Red-team library (116 payload generators)
 ├── scripts/
 │   ├── build.sh                    # EDK II compilation
 │   ├── qemu-run.sh                 # QEMU test harness with vTPM
@@ -501,7 +501,7 @@ cargo build --release
 ### 4. Scan Firmware
 
 ```bash
-# Scan a firmware dump with all 105 detectors
+# Scan a firmware dump with all 121 detectors
 ./target/release/barzakh-scanner --target /path/to/firmware.bin --report --format html --output report.html
 
 # Compare against a known-good baseline
@@ -521,7 +521,7 @@ cargo test -p barzakh-adversary
 cargo test -p barzakh-adversary -- --ignored corpus_validation
 
 # Or use the standalone barzakh-adversary CLI
-./target/release/barzakh-adversary list                    # List all 94 payloads
+./target/release/barzakh-adversary list                    # List all 116 payloads
 ./target/release/barzakh-adversary generate --arch x86_64  # Generate payloads
 ./target/release/barzakh-adversary corpus --output ./corpus # Generate test corpus
 ./target/release/barzakh-adversary validate --corpus ./corpus # Validate detection rates
@@ -534,7 +534,7 @@ cargo test -p barzakh-adversary -- --ignored corpus_validation
 ```bash
 cd src/barzakh-scanner-rs
 
-# Unit + integration tests (105 detectors, 94 payloads)
+# Unit + integration tests (121 detectors, 116 payloads)
 cargo test
 
 # Adversary red-team tests
