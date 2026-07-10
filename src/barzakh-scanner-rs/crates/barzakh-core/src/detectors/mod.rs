@@ -22,12 +22,15 @@ pub mod arm_trustzone;
 pub mod asus_nvram;
 pub mod attestation;
 pub mod auth_variable;
+pub mod baseband_firmware;
+pub mod baseband_rtos;
 pub mod blacklotus;
 pub mod bluetooth_firmware;
 pub mod bmc_spi;
 pub mod boot_guard;
 pub mod boot_guard_km;
 pub mod capsule_update;
+pub mod ccsds_telecommand;
 pub mod confidential_vm;
 pub mod csme_update;
 pub mod cxl_device;
@@ -39,11 +42,15 @@ pub mod entropy;
 pub mod esp_integrity;
 pub mod eventlog;
 pub mod firmware_volume;
+pub mod five_g_ran_firmware;
 pub mod ftpm;
+pub mod gnss_receiver;
 pub mod heci;
 pub mod hook;
 pub mod http_boot;
 pub mod idrac_spi;
+pub mod ims_firmware;
+pub mod inmarsat_terminal;
 pub mod insyde_smm;
 pub mod introspection;
 pub mod iommu_dmar;
@@ -69,6 +76,7 @@ pub mod microcode_injection;
 pub mod msi_key_reuse;
 pub mod network_boot;
 pub mod nvram_entropy;
+pub mod open_ran;
 pub mod opensbi;
 pub mod optionrom;
 pub mod pcr;
@@ -85,22 +93,30 @@ pub mod reloader;
 pub mod rowhammer;
 pub mod runtime;
 pub mod s3_bootscript;
+pub mod satellite_bus;
+pub mod satellite_ground_station;
+pub mod satellite_modem;
+pub mod satellite_transponder;
 pub mod sbat;
 pub mod secureboot;
 pub mod secureboot_chain;
 pub mod secureboot_dbx;
 pub mod self_erasure;
+pub mod sim_applet;
+pub mod small_cell;
 pub mod smm;
 pub mod smm_timing;
 pub mod smu_firmware;
 pub mod spectre_gadgets;
 pub mod spi_integrity;
 pub mod spi_region;
+pub mod starlink_terminal;
 pub mod symexec;
 pub mod thermal_covert;
 pub mod timetravel;
 pub mod tpm_command;
 pub mod voltage_glitch;
+pub mod volte_firmware;
 pub mod wifi_dxe;
 pub mod wifi_firmware;
 pub mod windows_bootchain;
@@ -215,5 +231,21 @@ pub fn create_all_detectors(baseline: Option<Baseline>) -> Vec<Box<dyn Detector>
         Box::new(ios_secure_enclave::IosSecureEnclaveDetector::new()),
         Box::new(ios_local_policy::IosLocalPolicyDetector::new()),
         Box::new(ios_ane_boot::IosAneBootDetector::new()),
+        Box::new(baseband_firmware::BasebandFirmwareDetector::new()),
+        Box::new(five_g_ran_firmware::FiveGRanFirmwareDetector::new()),
+        Box::new(sim_applet::SimAppletDetector::new()),
+        Box::new(ims_firmware::ImsFirmwareDetector::new()),
+        Box::new(baseband_rtos::BasebandRtosDetector::new()),
+        Box::new(open_ran::OpenRanDetector::new()),
+        Box::new(small_cell::SmallCellDetector::new()),
+        Box::new(volte_firmware::VolteFirmwareDetector::new()),
+        Box::new(satellite_modem::SatelliteModemDetector::new()),
+        Box::new(gnss_receiver::GnssReceiverDetector::new()),
+        Box::new(satellite_ground_station::SatelliteGroundStationDetector::new()),
+        Box::new(starlink_terminal::StarlinkTerminalDetector::new()),
+        Box::new(satellite_transponder::SatelliteTransponderDetector::new()),
+        Box::new(inmarsat_terminal::InmarsatTerminalDetector::new()),
+        Box::new(satellite_bus::SatelliteBusDetector::new()),
+        Box::new(ccsds_telecommand::CcsdsTelecommandDetector::new()),
     ]
 }

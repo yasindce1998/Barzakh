@@ -23,6 +23,8 @@ pub mod arm_tbbr_bypass;
 pub mod arm_trustzone;
 pub mod asus_nvram_redirect;
 pub mod auth_var_rollback;
+pub mod baseband_implant;
+pub mod baseband_rtos_hook;
 pub mod blacklotus_mok;
 pub mod bmc_spi_lateral;
 pub mod boot_guard_bypass;
@@ -31,6 +33,7 @@ pub mod boot_services_hook;
 pub mod bootkitty_grub_patch;
 pub mod bt_firmware_implant;
 pub mod capsule_tamper;
+pub mod ccsds_telecommand_inject;
 pub mod clkscrew_voltage;
 pub mod csme_update_tamper;
 pub mod cxl_dma_attack;
@@ -39,12 +42,16 @@ pub mod dell_bios_connect;
 pub mod dmar_neuter;
 pub mod dxe_depex_hijack;
 pub mod esp_persistence;
+pub mod five_g_ran_backdoor;
 pub mod ftpm_forge;
 pub mod fv_tamper;
+pub mod gnss_firmware_spoof;
 pub mod gpu_vbios_implant;
+pub mod ground_station_backdoor;
 pub mod heci_traffic;
 pub mod http_boot_mitm;
 pub mod idrac_spi_lateral;
+pub mod ims_firmware_tamper;
 pub mod insyde_smm_capsule;
 pub mod ios_ane_inject;
 pub mod ios_iboot_patch;
@@ -64,6 +71,7 @@ pub mod microcode_malicious;
 pub mod msi_key_leak;
 pub mod network_boot_redirect;
 pub mod nvram_capsule;
+pub mod open_ran_du_tamper;
 pub mod optionrom_inject;
 pub mod pe_inject;
 pub mod pei_core_patch;
@@ -80,21 +88,29 @@ pub mod riscv_uefi_boot;
 pub mod rowhammer_trr_bypass;
 pub mod runtime_services_hook;
 pub mod s3_bootscript_inject;
+pub mod satcom_terminal_implant;
+pub mod satellite_bus_tamper;
+pub mod satellite_modem_implant;
 pub mod sbat_rollback;
 pub mod secureboot_bypass;
 pub mod secureboot_reloader;
 pub mod sep_downgrade;
 pub mod sev_snp_vmpl_escape;
 pub mod signature_plant;
+pub mod sim_applet_inject;
+pub mod small_cell_implant;
 pub mod smm_timing_anomaly;
 pub mod smu_firmware_tamper;
 pub mod spectre_btb_inject;
 pub mod spi_region_tamper;
+pub mod starlink_terminal_tamper;
 pub mod tdx_ovmf_inject;
 pub mod thermal_rapl_exfil;
 pub mod tpm_ref_overflow;
 pub mod trampoline;
+pub mod transponder_firmware_inject;
 pub mod trustcache_inject;
+pub mod volte_modem_patch;
 pub mod wifi_dxe_inject;
 pub mod wifi_firmware_implant;
 pub mod windows_bcd_tamper;
@@ -203,5 +219,21 @@ pub fn create_all_payloads() -> Vec<Box<dyn Payload>> {
         Box::new(ios_sep_forge::IosSepForgePayload),
         Box::new(ios_policy_tamper::IosPolicyTamperPayload),
         Box::new(ios_ane_inject::IosAneInjectPayload),
+        Box::new(baseband_implant::BasebandImplantPayload),
+        Box::new(five_g_ran_backdoor::FiveGRanBackdoorPayload),
+        Box::new(sim_applet_inject::SimAppletInjectPayload),
+        Box::new(ims_firmware_tamper::ImsFirmwareTamperPayload),
+        Box::new(baseband_rtos_hook::BasebandRtosHookPayload),
+        Box::new(open_ran_du_tamper::OpenRanDuTamperPayload),
+        Box::new(small_cell_implant::SmallCellImplantPayload),
+        Box::new(volte_modem_patch::VolteModemPatchPayload),
+        Box::new(satellite_modem_implant::SatelliteModemImplantPayload),
+        Box::new(gnss_firmware_spoof::GnssFirmwareSpoofPayload),
+        Box::new(ground_station_backdoor::GroundStationBackdoorPayload),
+        Box::new(starlink_terminal_tamper::StarlinkTerminalTamperPayload),
+        Box::new(transponder_firmware_inject::TransponderFirmwareInjectPayload),
+        Box::new(satcom_terminal_implant::SatcomTerminalImplantPayload),
+        Box::new(satellite_bus_tamper::SatelliteBusTamperPayload),
+        Box::new(ccsds_telecommand_inject::CcsdsTelecommandInjectPayload),
     ]
 }
