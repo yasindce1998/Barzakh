@@ -8,8 +8,6 @@ const CCSDS_MARKERS: &[&[u8]] = &[b"CCSDS", b"TC_FRAME", b"CLTU", b"COP-1", b"FA
 const SPACE_LINK_MARKERS: &[&[u8]] =
     &[b"SLE_RAF", b"SLE_RCF", b"SLE_CLTU", b"FCLTU", b"space_link"];
 
-const ENCRYPTION_MARKERS: &[&[u8]] = &[b"SDLS", b"TC_SEC", b"CCSDS_AUTH", b"SPI_TC"];
-
 pub struct CcsdsTelecommandDetector;
 
 impl Default for CcsdsTelecommandDetector {

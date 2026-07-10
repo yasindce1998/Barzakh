@@ -30,10 +30,11 @@ impl Payload for FiveGRanBackdoorPayload {
         let boundary = size / 2;
         data[boundary..boundary + 8].copy_from_slice(b"__EXTRA_");
         // Fill with non-zero code-like bytes
-        for i in boundary + 8..boundary + 256 {
-            if i < size {
-                data[i] = ((i * 7 + 3) & 0xFF) as u8;
-            }
+        for (j, byte) in data[boundary + 8..(boundary + 256).min(size)]
+            .iter_mut()
+            .enumerate()
+        {
+            *byte = (((boundary + 8 + j) * 7 + 3) & 0xFF) as u8;
         }
 
         Ok(data)

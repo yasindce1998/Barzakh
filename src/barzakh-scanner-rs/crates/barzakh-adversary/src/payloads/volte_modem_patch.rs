@@ -33,10 +33,11 @@ impl Payload for VolteModemPatchPayload {
         data[elf_off + 6] = 0x01; // ELF version
 
         // Fill ELF-like content
-        for i in elf_off + 7..elf_off + 128 {
-            if i < size {
-                data[i] = ((i * 17 + 11) & 0xFF) as u8;
-            }
+        for (j, byte) in data[elf_off + 7..(elf_off + 128).min(size)]
+            .iter_mut()
+            .enumerate()
+        {
+            *byte = (((elf_off + 7 + j) * 17 + 11) & 0xFF) as u8;
         }
 
         // Codec path interception hook

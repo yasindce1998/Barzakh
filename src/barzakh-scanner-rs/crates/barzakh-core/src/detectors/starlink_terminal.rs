@@ -13,8 +13,6 @@ const LEO_TERMINAL_MARKERS: &[&[u8]] = &[
 const LEO_CONSTELLATION_MARKERS: &[&[u8]] =
     &[b"OneWeb", b"Kuiper", b"Telesat", b"LEO_constellation"];
 
-const KERNEL_MARKERS: &[&[u8]] = &[b"Linux version", b"vmlinuz", b"initramfs"];
-
 pub struct StarlinkTerminalDetector;
 
 impl Default for StarlinkTerminalDetector {

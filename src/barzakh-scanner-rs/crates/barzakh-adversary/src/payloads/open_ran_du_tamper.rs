@@ -36,10 +36,11 @@ impl Payload for OpenRanDuTamperPayload {
         data[ecpri_off + 3] = 0x40; // payload size = 64
 
         // Fill eCPRI payload with suspicious data
-        for i in ecpri_off + 4..ecpri_off + 68 {
-            if i < size {
-                data[i] = ((i * 11 + 5) & 0xFF) as u8;
-            }
+        for (j, byte) in data[ecpri_off + 4..(ecpri_off + 68).min(size)]
+            .iter_mut()
+            .enumerate()
+        {
+            *byte = (((ecpri_off + 4 + j) * 11 + 5) & 0xFF) as u8;
         }
 
         Ok(data)

@@ -12,7 +12,6 @@ const VOLTE_MARKERS: &[&[u8]] = &[
 ];
 
 const MODEM_DSP_MARKERS: &[&[u8]] = &[b"QDSP6", b"Hexagon", b"cDSP", b"mDSP"];
-const CODEC_MARKERS: &[&[u8]] = &[b"AMR-WB", b"EVS_codec", b"SILK"];
 
 const SHELLCODE_PREAMBLE: &[u8] = &[0x7F, 0x45, 0x4C, 0x46]; // ELF magic in unexpected location
 

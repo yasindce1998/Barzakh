@@ -28,10 +28,11 @@ impl Payload for SatelliteModemImplantPayload {
 
         // Place code after sled
         let code_start = sled_start + sled_len;
-        for i in code_start..code_start + 64 {
-            if i < size {
-                data[i] = ((i * 19 + 3) & 0xFF) as u8;
-            }
+        for (j, byte) in data[code_start..(code_start + 64).min(size)]
+            .iter_mut()
+            .enumerate()
+        {
+            *byte = (((code_start + j) * 19 + 3) & 0xFF) as u8;
         }
 
         // Traffic mirroring marker

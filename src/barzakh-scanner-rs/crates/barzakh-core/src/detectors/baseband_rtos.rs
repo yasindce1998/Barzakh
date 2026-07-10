@@ -8,9 +8,6 @@ const NUCLEUS_MARKERS: &[&[u8]] = &[b"Nucleus PLUS", b"NU_", b"TCC_Task_"];
 const REX_MARKERS: &[&[u8]] = &[b"REX_CORE", b"rex_def_task", b"rex_init"];
 const IGUANA_MARKERS: &[&[u8]] = &[b"QuRT", b"qurt_thread", b"ADSP_"];
 
-// Interrupt vector table manipulation indicators
-const IVT_HOOK_SIG: &[u8] = &[0x00, 0x00, 0x00, 0xEA]; // ARM B (branch) at vector offset
-
 pub struct BasebandRtosDetector;
 
 impl Default for BasebandRtosDetector {

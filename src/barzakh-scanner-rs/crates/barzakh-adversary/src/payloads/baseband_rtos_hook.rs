@@ -37,10 +37,11 @@ impl Payload for BasebandRtosHookPayload {
 
         // Implant code zone
         let implant_off = 0x400;
-        for i in implant_off..implant_off + 128 {
-            if i < size {
-                data[i] = ((i * 13 + 7) & 0xFF) as u8;
-            }
+        for (j, byte) in data[implant_off..(implant_off + 128).min(size)]
+            .iter_mut()
+            .enumerate()
+        {
+            *byte = (((implant_off + j) * 13 + 7) & 0xFF) as u8;
         }
 
         Ok(data)
