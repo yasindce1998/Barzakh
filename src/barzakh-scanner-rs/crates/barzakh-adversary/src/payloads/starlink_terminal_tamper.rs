@@ -19,7 +19,7 @@ impl Payload for StarlinkTerminalTamperPayload {
         let mut data = vec![0u8; size];
 
         // Starlink terminal marker
-        data[0..28].copy_from_slice(b"SpaceX Starlink user_terminal");
+        data[0..29].copy_from_slice(b"SpaceX Starlink user_terminal");
 
         // Bootloader signature verification bypass
         let boot_off = 0x80;

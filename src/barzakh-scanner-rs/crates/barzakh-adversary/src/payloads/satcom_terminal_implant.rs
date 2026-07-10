@@ -19,7 +19,7 @@ impl Payload for SatcomTerminalImplantPayload {
         let mut data = vec![0u8; size];
 
         // Inmarsat/maritime satcom marker
-        data[0..28].copy_from_slice(b"Inmarsat FleetBroadband Sailor");
+        data[0..30].copy_from_slice(b"Inmarsat FleetBroadband Sailor");
 
         // Position spoofing configuration
         let spoof_off = 0x80;

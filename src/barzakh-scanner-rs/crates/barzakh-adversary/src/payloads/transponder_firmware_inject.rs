@@ -19,7 +19,7 @@ impl Payload for TransponderFirmwareInjectPayload {
         let mut data = vec![0u8; size];
 
         // Transponder/payload controller marker
-        data[0..28].copy_from_slice(b"payload_controller transponder");
+        data[0..30].copy_from_slice(b"payload_controller transponder");
 
         // Unauthorized reconfiguration commands
         let reconfig_off = 0x80;

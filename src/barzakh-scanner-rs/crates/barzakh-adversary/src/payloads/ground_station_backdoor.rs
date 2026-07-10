@@ -19,7 +19,7 @@ impl Payload for GroundStationBackdoorPayload {
         let mut data = vec![0u8; size];
 
         // Ground station markers
-        data[0..24].copy_from_slice(b"CCSDS ground_station TT&C");
+        data[0..25].copy_from_slice(b"CCSDS ground_station TT&C");
 
         // Telecommand injection capability
         let tc_off = 0x80;

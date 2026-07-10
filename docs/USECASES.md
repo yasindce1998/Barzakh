@@ -138,7 +138,7 @@ barzakh-scanner scan --target current-firmware.bin --baseline baseline.json
 barzakh-scanner report --target current-firmware.bin --format html --output report.html
 ```
 
-**Detection coverage:** Boot Services table integrity, firmware volume checksums, PE injection in runtime memory, known bootkit signatures, trampoline patterns, entropy anomalies, Android boot chain attacks (pKVM, DICE, GKI, RKP, Trusty, bootctrl, vendor_dlkm, bootconfig, binary transparency), Apple/iOS boot chain (Img4, Trust Cache, AMFI, KTRR, SEP), wireless firmware (WLAN/Bluetooth), and multi-arch heuristics — 89 detectors total.
+**Detection coverage:** Boot Services table integrity, firmware volume checksums, PE injection in runtime memory, known bootkit signatures, trampoline patterns, entropy anomalies, Android boot chain attacks (pKVM, DICE, GKI, RKP, Trusty, bootctrl, vendor_dlkm, bootconfig, binary transparency), Apple/iOS boot chain (Img4, Trust Cache, AMFI, KTRR, SEP), wireless firmware (WLAN/Bluetooth), telecom baseband (5G RAN, VoLTE, IMS, O-RAN, SIM Toolkit, small cell), satellite systems (CCSDS, GNSS, VSAT, Starlink/LEO terminals, transponders, ground stations), and multi-arch heuristics — 105 detectors total.
 
 ---
 
@@ -164,7 +164,7 @@ barzakh-scanner report --target current-firmware.bin --format html --output repo
 
 **How Barzakh helps:**
 1. Point the scanner at the raw memory dump
-2. The 89 detectors run in parallel (< 500ms for typical dumps)
+2. The 105 detectors run in parallel (< 500ms for typical dumps)
 3. Findings are prioritized by severity (Critical > High > Medium > Low > Info)
 4. The HTML report provides analyst-friendly descriptions of each finding
 

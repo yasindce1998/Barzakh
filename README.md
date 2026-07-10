@@ -6,7 +6,7 @@
 
 **The most comprehensive open-source UEFI firmware security research platform**
 
-*Offense emulation from Ring 0 to Ring -4 | 89 detection engines | Closed-loop adversary validation*
+*Offense emulation from Ring 0 to Ring -4 | 105 detection engines | Closed-loop adversary validation*
 
 [![CI](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml/badge.svg)](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange)](src/barzakh-scanner-rs/)
@@ -29,8 +29,8 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 
 **Key capabilities:**
 - **31 offense modules** spanning x86_64, AArch64/Apple Silicon, and RISC-V architectures
-- **89 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, and wireless firmware)
-- **78 adversary payload generators** for automated true-positive validation
+- **105 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
+- **94 adversary payload generators** for automated true-positive validation
 - **Full Ring -4 coverage** — CPU microcode, speculative execution, thermal/power covert channels, voltage glitching, debug interfaces, rowhammer
 - **Hardware lab testing path** — documented progression from simulation to real silicon
 
@@ -122,7 +122,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 2. Barzakh Scanner — Detection Engine (Rust)
 
-**89 specialized detectors** organized by attack surface:
+**105 specialized detectors** organized by attack surface:
 
 <details>
 <summary><b>Full Detector List</b></summary>
@@ -219,6 +219,22 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | 87 | `ios_amfi` | iOS | Code-signing enforcement disabled via boot-args (amfi_get_out_of_my_way / cs_enforcement_disable) |
 | 88 | `ios_ktrr` | iOS | KTRR/CTRR (AMCC) kernel-text lockdown not engaged — kernel patch protection bypass |
 | 89 | `ios_sep_downgrade` | iOS | Secure Enclave personalization nonce zeroed — replayable APTicket / SEP downgrade |
+| 90 | `baseband_firmware` | Telecom | Cellular baseband firmware implant detection (Shannon/Exynos/MediaTek) |
+| 91 | `baseband_rtos` | Telecom | Baseband RTOS (ThreadX/Nucleus/REX/QuRT) IVT hooks and task injection |
+| 92 | `five_g_ran` | Telecom | 5G RAN gNodeB firmware tampering — O-RAN split manipulation |
+| 93 | `ims_firmware` | Telecom | IMS/VoLTE core firmware SIP header injection and RTP interception |
+| 94 | `open_ran_du` | Telecom | Open RAN Distributed Unit eCPRI/F1 interface tampering |
+| 95 | `sim_toolkit` | Telecom | SIM Toolkit applet injection — STK command interception |
+| 96 | `small_cell` | Telecom | Small cell/femtocell firmware backdoors — rogue eNodeB detection |
+| 97 | `volte_firmware` | Telecom | VoLTE/VoNR modem DSP firmware implant and codec interception |
+| 98 | `ccsds_telecommand` | Satellite | CCSDS telecommand auth bypass — SDLS encryption/MAC forgery |
+| 99 | `gnss_firmware` | Satellite | GNSS receiver firmware spoofing — ephemeris/PVT manipulation |
+| 100 | `satellite_bus` | Satellite | Satellite bus (I2C/SpaceWire/MIL-STD-1553) command injection |
+| 101 | `satellite_modem` | Satellite | VSAT/DVB-S2 modem firmware code injection and traffic mirroring |
+| 102 | `space_debris_tracking` | Satellite | Space situational awareness firmware — TLE/conjunction manipulation |
+| 103 | `starlink_terminal` | Satellite | LEO terminal (Starlink/OneWeb/Kuiper) bootloader bypass and beam manipulation |
+| 104 | `transponder_firmware` | Satellite | Satellite transponder firmware — frequency plan and power manipulation |
+| 105 | `vsat_terminal` | Satellite | VSAT terminal management interface backdoors and config tampering |
 
 </details>
 
@@ -229,13 +245,13 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | True Positive Rate | ≥ 85% | Validated via adversary corpus |
 | False Positive Rate | < 5% | Measured against clean firmware baselines |
 | ROC-AUC | ≥ 0.92 | Aggregated across all detector categories |
-| Scan Latency | < 500ms | Per-image, full 89-detector sweep |
+| Scan Latency | < 500ms | Per-image, full 105-detector sweep |
 
 ---
 
 ### 3. Barzakh Adversary — Red-Team Payload Generator (Rust)
 
-**Standalone binary: `barzakh-adversary`** | **78 payload generators** that produce realistic tampered firmware images for detection validation:
+**Standalone binary: `barzakh-adversary`** | **94 payload generators** that produce realistic tampered firmware images for detection validation:
 
 ```bash
 # Standalone CLI commands (no cargo required — use the release binary)
@@ -309,6 +325,22 @@ barzakh-adversary esp --payload dxe_persistence # Build ESP image for hardware t
 | `android_bootctrl_poison` | `android_bootctrl` | A/B boot metadata with both slots unbootable |
 | `android_dlkm_inject` | `android_vendor_dlkm` | EROFS image with unsigned kernel module |
 | `android_bootconfig_inject` | `android_bootconfig` | Bootconfig with init override + SELinux disable |
+| `baseband_implant` | `baseband_firmware` | Baseband firmware implant with NOP sled and modem hooks |
+| `baseband_rtos_hook` | `baseband_rtos` | RTOS IVT hook and spy task injection |
+| `five_g_ran_backdoor` | `five_g_ran` | 5G gNodeB unsigned code section injection |
+| `ims_firmware_patch` | `ims_firmware` | IMS core firmware SIP header interception |
+| `open_ran_du_tamper` | `open_ran_du` | O-RAN DU eCPRI non-standard message injection |
+| `sim_applet_inject` | `sim_toolkit` | SIM Toolkit applet injection with STK hooks |
+| `small_cell_implant` | `small_cell` | Small cell firmware backdoor with rogue eNodeB |
+| `volte_modem_patch` | `volte_firmware` | VoLTE DSP ELF implant + codec path interception |
+| `ccsds_telecommand_inject` | `ccsds_telecommand` | CCSDS SDLS auth bypass + telecommand injection |
+| `gnss_firmware_spoof` | `gnss_firmware` | GNSS receiver firmware ephemeris spoofing |
+| `satellite_bus_tamper` | `satellite_bus` | Satellite bus OBC command injection via I2C/SpaceWire |
+| `satellite_modem_implant` | `satellite_modem` | VSAT modem NOP sled + traffic mirroring |
+| `satcom_terminal_implant` | `starlink_terminal` | LEO terminal bootloader bypass + beam intercept |
+| `space_debris_tracking_spoof` | `space_debris_tracking` | SSA firmware TLE/conjunction manipulation |
+| `transponder_firmware_inject` | `transponder_firmware` | Transponder firmware frequency plan injection |
+| `vsat_terminal_backdoor` | `vsat_terminal` | VSAT terminal management interface backdoor |
 
 **Validation loop:** `generate payload` → `scan with detector` → `assert finding raised` → measure TPR/FPR
 
@@ -393,9 +425,9 @@ barzakh/
 │   │   ├── TpmAttestation/         # PCR monitoring
 │   │   └── EventLogExtractor/      # TCG event log parsing
 │   └── barzakh-scanner-rs/         # Rust workspace
-│       ├── crates/barzakh-core/    # Detection engine (89 detectors)
+│       ├── crates/barzakh-core/    # Detection engine (105 detectors)
 │       ├── crates/barzakh-cli/     # CLI binaries (barzakh-scanner + barzakh-adversary)
-│       └── crates/barzakh-adversary/ # Red-team library (78 payload generators)
+│       └── crates/barzakh-adversary/ # Red-team library (94 payload generators)
 ├── scripts/
 │   ├── build.sh                    # EDK II compilation
 │   ├── qemu-run.sh                 # QEMU test harness with vTPM
@@ -469,7 +501,7 @@ cargo build --release
 ### 4. Scan Firmware
 
 ```bash
-# Scan a firmware dump with all 89 detectors
+# Scan a firmware dump with all 105 detectors
 ./target/release/barzakh-scanner --target /path/to/firmware.bin --report --format html --output report.html
 
 # Compare against a known-good baseline
@@ -489,7 +521,7 @@ cargo test -p barzakh-adversary
 cargo test -p barzakh-adversary -- --ignored corpus_validation
 
 # Or use the standalone barzakh-adversary CLI
-./target/release/barzakh-adversary list                    # List all 78 payloads
+./target/release/barzakh-adversary list                    # List all 94 payloads
 ./target/release/barzakh-adversary generate --arch x86_64  # Generate payloads
 ./target/release/barzakh-adversary corpus --output ./corpus # Generate test corpus
 ./target/release/barzakh-adversary validate --corpus ./corpus # Validate detection rates
@@ -502,7 +534,7 @@ cargo test -p barzakh-adversary -- --ignored corpus_validation
 ```bash
 cd src/barzakh-scanner-rs
 
-# Unit + integration tests (89 detectors, 78 payloads)
+# Unit + integration tests (105 detectors, 94 payloads)
 cargo test
 
 # Adversary red-team tests
