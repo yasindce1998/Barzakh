@@ -6,7 +6,7 @@
 
 **The most comprehensive open-source UEFI firmware security research platform**
 
-*Offense emulation from Ring 0 to Ring -4 | 122 detection engines | Closed-loop adversary validation*
+*Offense emulation from Ring 0 to Ring -4 | 121 detection engines | Closed-loop adversary validation*
 
 [![CI](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml/badge.svg)](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange)](src/barzakh-scanner-rs/)
@@ -29,7 +29,7 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 
 **Key capabilities:**
 - **31 offense modules** spanning x86_64, AArch64/Apple Silicon, and RISC-V architectures
-- **122 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
+- **121 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
 - **116 adversary payload generators** for automated true-positive validation
 - **Full Ring -4 coverage** — CPU microcode, speculative execution, thermal/power covert channels, voltage glitching, debug interfaces, rowhammer
 - **Hardware lab testing path** — documented progression from simulation to real silicon
