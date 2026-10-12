@@ -12,8 +12,7 @@
 **/
 
 #include "FvPersistence.h"
-
-#define SIMULATION_MODE  TRUE
+#include "FvbFlashAccess.h"
 
 //
 // FFS file state bits for a valid, loadable file
@@ -319,6 +318,44 @@ InjectFvPayload (
     } else {
       DEBUG ((DEBUG_INFO, "  Status:        SIMULATED (logged only, no buffer)\n"));
     }
+  } else {
+    //
+    // Functional build: erase the target FFS extent and program the
+    // real flash through FVB2 — the exact LoJax/MosaicRegressor
+    // persistence technique.
+    //
+    Status = FvbEraseRange (WriteOffset, TotalSize);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "[FvPersist] FVB2 erase failed: %r\n", Status));
+      return Status;
+    }
+
+    Status = FvbWriteRange (WriteOffset, sizeof (EFI_FFS_FILE_HEADER), (UINT8 *)&FfsHeader);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "[FvPersist] FVB2 header write failed: %r\n", Status));
+      return Status;
+    }
+
+    Status = FvbWriteRange (
+               WriteOffset + sizeof (EFI_FFS_FILE_HEADER),
+               PayloadSize,
+               Payload
+               );
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "[FvPersist] FVB2 payload write failed: %r\n", Status));
+      return Status;
+    }
+
+    if (FlashBuffer != NULL && (WriteOffset + TotalSize) <= FlashSize) {
+      CopyMem (FlashBuffer + WriteOffset, &FfsHeader, sizeof (EFI_FFS_FILE_HEADER));
+      CopyMem (
+        FlashBuffer + WriteOffset + sizeof (EFI_FFS_FILE_HEADER),
+        Payload,
+        PayloadSize
+        );
+    }
+
+    DEBUG ((DEBUG_INFO, "  Status:        WRITTEN VIA FVB2 (functional)\n"));
   }
 
   DEBUG ((DEBUG_INFO, "==========================================\n\n"));

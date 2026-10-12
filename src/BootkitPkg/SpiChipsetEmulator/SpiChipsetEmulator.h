@@ -21,8 +21,7 @@
 #include <Library/IoLib.h>
 #include <Library/PciLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define SPI_DEBUG_PREFIX  "[SpiChipset-Emu] "
 

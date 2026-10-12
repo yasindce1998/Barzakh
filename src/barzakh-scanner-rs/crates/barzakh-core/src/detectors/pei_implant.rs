@@ -219,7 +219,7 @@ impl Detector for PeiImplantDetector {
                             .unwrap_or([0; 8]),
                     ) as usize;
 
-                    if fv_length > 0 && fv_length < data.len() {
+                    if fv_length > 0 && fv_length <= data.len() {
                         findings.extend(self.check_pei_core_entry(
                             &data,
                             fv_header_start,

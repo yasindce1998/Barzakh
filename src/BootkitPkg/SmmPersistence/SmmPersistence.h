@@ -19,8 +19,7 @@
 #include <Library/PrintLib.h>
 #include <Library/IoLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define SMM_DEBUG_PREFIX  "[SMM-Emu] "
 

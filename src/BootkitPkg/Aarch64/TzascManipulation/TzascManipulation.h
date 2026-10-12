@@ -21,8 +21,7 @@
 #include <Library/DebugLib.h>
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define TZASC_DEBUG_PREFIX  "[TZASC-Emu] "
 

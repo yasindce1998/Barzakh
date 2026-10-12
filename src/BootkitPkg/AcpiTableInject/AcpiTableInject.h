@@ -20,8 +20,7 @@
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <IndustryStandard/Acpi.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define ACPI_DEBUG_PREFIX  "[AcpiInject-Emu] "
 

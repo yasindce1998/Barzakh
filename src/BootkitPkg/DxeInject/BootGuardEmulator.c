@@ -10,8 +10,7 @@
 **/
 
 #include "BootGuardEmulator.h"
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 STATIC CHAR8  *mProfileNames[] = {
   "Disabled",

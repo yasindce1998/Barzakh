@@ -41,4 +41,9 @@
   BootkitPkg/Aarch64/SepMailboxIntercept/SepMailboxIntercept.inf
 
 [BuildOptions]
-  GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_RESEARCH=1 -Wall -Wno-unused-parameter -Werror=implicit-function-declaration -fno-stack-protector
+  GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_RESEARCH=1 -I$(WORKSPACE)/BootkitPkg/Include -Wall -Wno-unused-parameter -Werror=implicit-function-declaration -fno-stack-protector
+  #
+  # Functional (real-hardware) lab build — see Include/BarzakhMode.h.
+  # Simulation is the default; never enable this for published artifacts.
+  #
+  # GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_FUNCTIONAL=1

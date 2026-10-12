@@ -13,8 +13,7 @@
 **/
 
 #include "SelfErasure.h"
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 EFI_STATUS
 EFIAPI

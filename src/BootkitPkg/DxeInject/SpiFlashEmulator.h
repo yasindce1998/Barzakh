@@ -25,6 +25,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Library/MemoryAllocationLib.h>
+#include <BarzakhMode.h>
 
 //
 // SPI Flash Regions (Intel PCH)

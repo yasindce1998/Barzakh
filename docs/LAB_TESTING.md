@@ -497,32 +497,63 @@ qemu-system-x86_64 ... -netdev user,id=net0 -device virtio-net-pci,netdev=net0
 
 ### Kill Switch 5: SIMULATION_MODE Flag
 
-**Purpose:** A global runtime flag that prevents any real hardware operations. When `SIMULATION_MODE` is active, all DXE operations become no-ops — no hooking, no persistence writes, no SPI flash operations.
+**Purpose:** A global compile-time flag that prevents any real hardware operations. When `SIMULATION_MODE` is active, all hardware-modifying DXE operations become no-ops — no persistence writes, no SPI flash operations, no MSR writes. Boot Services hooks still install (they are the detection target) but their side effects are logged only.
+
+Since the mode unification, the flag lives in **`src/BootkitPkg/Include/BarzakhMode.h`** and is controlled by a single build define — no per-module flags.
 
 #### How It Works
 
-- `SIMULATION_MODE` is checked at the top of each hardware-modifying function
-- If set, functions return success immediately without performing the operation
+- `BARZAKH_SIMULATION_MODE` (aliased as `SIMULATION_MODE`) is defined centrally in `BarzakhMode.h`
+- It is checked at the top of each hardware-modifying function
+- If set, functions log the operation and return success without performing it
 - Allows running the full DXE module logic path for testing while guaranteeing zero hardware modification
+- Functional (real-hardware) builds require **both** `-DBARZAKH_FUNCTIONAL=1` and the existing `BARZAKH_RESEARCH` gate — a functional build without the research gate fails to compile
 
 #### When SIMULATION_MODE Is Active
 
 | Operation | Behavior |
 |-----------|----------|
 | SPI flash writes | Skipped (logged) |
-| MSR hooking | Skipped (logged) |
-| ExitBootServices hook | Skipped (logged) |
+| MSR hooking | Writes skipped (reads still real) |
+| FVB2 flash programming | Never invoked |
+| PCI ROM BAR injection | Skipped (logged) |
 | NVRAM variable writes | Skipped (logged) |
 | Serial debug output | Still active (read-only) |
+
+#### What a Functional Build Changes
+
+| Path | Simulation | Functional (`-DBARZAKH_FUNCTIONAL=1`) |
+|------|------------|----------------------------------------|
+| SPI flash write/erase | In-RAM shadow buffer only | Routed through `EFI_FIRMWARE_VOLUME_BLOCK2_PROTOCOL` (real LoJax-style persistence path) |
+| PCI option ROM injection | Fabricated device list, logged only | Real `PciRead/PciWrite` enumeration + MMIO ROM BAR write |
+| MSR writes (IA32_LSTAR etc.) | Logged only | Real `AsmWriteMsr64` |
+
+**Build commands:**
+
+```bash
+# Simulation build (default — what CI builds and publishes)
+build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc
+
+# Functional lab build (research gate required, never publish)
+build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc \
+    -D BARZAKH_FUNCTIONAL=1
+```
+
+The functional define can also be uncommented in the DSC `[BuildOptions]` section, but the command-line form is preferred so published builds never carry it.
 
 #### Lab Verification Procedure
 
 ```bash
-# Build with SIMULATION_MODE enabled
+# Build with SIMULATION_MODE enabled (default)
 # Then run normally — check serial output confirms no-op behavior
 ./scripts/qemu-run.sh --debug --serial-log /tmp/sim-mode.log
 grep "SIMULATION" /tmp/sim-mode.log
-# Expected: [BARZAKH] SIMULATION_MODE active - hardware ops disabled
+# Expected: [SPI-Emu] SIMULATION: Would write ... (and similar)
+
+# Functional build in QEMU (OVMF's FVB2 protocol is real, writes go
+# to the emulated pflash backend — safe rehearsal for hardware)
+# Then verify writes actually landed:
+grep "FUNCTIONAL BUILD: real flash writes ENABLED" /tmp/serial.log
 ```
 
 ---
@@ -535,7 +566,7 @@ grep "SIMULATION" /tmp/sim-mode.log
 | `BARZAKH_EXPIRY_DATE` | `"YYYY-MM-DD"` expiry date | `"2027-12-31"` |
 | `BARZAKH_QEMU_MODE` | Allows TPM bypass, relaxes air-gap check | Not defined (strict mode) |
 | `BARZAKH_STUB_CRYPTO` | Enables stub RSA verification (testing only) | Not defined (fail-closed) |
-| `SIMULATION_MODE` | Disables all hardware operations | Not defined (live mode) |
+| `BARZAKH_FUNCTIONAL` | Enables real hardware paths (FVB2 flash, ROM BAR injection, MSR writes). Requires `BARZAKH_RESEARCH` | Not defined (simulation mode) |
 
 ---
 
@@ -777,28 +808,24 @@ sudo cat /dev/mei0 | xxd | head -100
 #### What You Do
 
 ```bash
-# 1. Disable SIMULATION_MODE in offense modules
-#    Edit src/BootkitPkg/Ring3Offense/spi_write_implant.c
-#    Change: #define SIMULATION_MODE TRUE
-#    To:     #define SIMULATION_MODE FALSE
-#    Repeat for all 5 offense modules you want to test
-
-# 2. Build with EDK2 for your real platform
+# 1. Build in functional mode (single flag, no per-module edits)
 source edksetup.sh
-build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc -D TARGET_PLATFORM=REAL
+build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc -D BARZAKH_FUNCTIONAL=1
+# This routes SPI flash writes through the real FVB2 protocol,
+# performs real PCI ROM BAR injection, and enables real MSR writes.
 
-# 3. Inject built DXE drivers into firmware image
+# 2. Inject built DXE drivers into firmware image
 #    Use UEFITool to insert the .efi into a firmware volume
 #    Or use FMMT (Firmware Module Management Tool)
 
-# 4. Flash the complete image
+# 3. Flash the complete image
 flashrom -p ch341a_spi -w firmware_with_implants.bin
 
-# 5. Boot and observe serial output
+# 4. Boot and observe serial output
 screen /dev/ttyUSB0 115200
 # You should see DXE driver load messages and hook confirmations
 
-# 6. IMMEDIATELY recover after testing
+# 5. IMMEDIATELY recover after testing
 flashrom -p ch341a_spi -w original_firmware.bin
 ```
 

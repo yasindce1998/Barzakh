@@ -10,11 +10,14 @@
 **/
 
 #include "MsrHook.h"
+#include <BarzakhMode.h>
 
 //
-// Research mode flag - when TRUE, only log without modifying MSRs
+// MSR writes are a real CosmicStrand-style technique — in simulation
+// builds they are logged only; functional builds perform the write.
+// (Kept as a separate name so the write path reads explicitly.)
 //
-#define RESEARCH_MODE  TRUE
+#define RESEARCH_MODE  BARZAKH_SIMULATION_MODE
 
 /**
   Read a Model Specific Register.

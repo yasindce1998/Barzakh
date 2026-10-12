@@ -23,12 +23,7 @@
 #include <Library/DebugLib.h>
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-
-#ifdef BARZAKH_FUNCTIONAL
-  #define SIMULATION_MODE  FALSE
-#else
-  #define SIMULATION_MODE  TRUE
-#endif
+#include <BarzakhMode.h>
 
 #define VHOOK_DEBUG_PREFIX  "[VecHook-Emu] "
 

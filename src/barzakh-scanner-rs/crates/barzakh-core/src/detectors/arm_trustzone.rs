@@ -69,20 +69,36 @@ impl ArmTrustzoneDetector {
         let mut smc_count = 0;
         let mut suspicious_smc = Vec::new();
 
+        // Qualcomm SCM commands known to be dangerous when called outside the
+        // legitimate bootloader (see qseecom / scm.c command tables).
+        const DANGEROUS_SCM_SERVICES: [u32; 3] = [
+            0x04, // PIL (peripheral image loading) — SCM_SVC_PIL
+            0x01, // fuse read/write — SCM_SVC_FUSE
+            0x05, // security service calls
+        ];
+
         for i in 0..data.len().saturating_sub(16) {
             if data[i..i + 4] == SMC_IMMEDIATE_0 {
                 smc_count += 1;
 
-                // Check preceding instruction for service ID in x0
-                // MOV Xd, #imm16 pattern: 0xD2800000 | (imm16 << 5) | Rd
-                if i >= 4 {
-                    let prev_instr =
-                        u32::from_le_bytes(data[i - 4..i].try_into().unwrap_or([0; 4]));
-                    if (prev_instr & 0xFF80_0000) == 0xD280_0000 {
-                        let imm16 = (prev_instr >> 5) & 0xFFFF;
-                        let service_id = imm16 >> 8;
-                        if service_id > 0x10 {
-                            suspicious_smc.push((i, service_id));
+                // Look back up to 4 instructions for the MOVZ that loads the
+                // service ID into x0 — real SCM call sites interleave argument
+                // setup (MOV x1, LDR x2, ...) between the service-ID load
+                // and the SMC itself.
+                if i >= 16 {
+                    for back in 1..=4usize {
+                        let instr_start = i - back * 4;
+                        let prev_instr =
+                            u32::from_le_bytes(data[instr_start..instr_start + 4].try_into().unwrap_or([0; 4]));
+                        if (prev_instr & 0xFF80_0000) == 0xD280_0000 {
+                            let imm16 = (prev_instr >> 5) & 0xFFFF;
+                            let service_id = imm16 >> 8;
+                            let dangerous =
+                                DANGEROUS_SCM_SERVICES.contains(&service_id) || service_id > 0x10;
+                            if dangerous {
+                                suspicious_smc.push((i, service_id));
+                            }
+                            break;
                         }
                     }
                 }
@@ -94,9 +110,10 @@ impl ArmTrustzoneDetector {
                 Finding::new(
                     "arm_trustzone",
                     Severity::High,
-                    "Multiple SMC calls with non-standard service IDs detected",
+                    "Multiple SMC calls with suspicious service IDs detected",
                     &format!(
-                        "Found {} SMC #0 instructions with {} using non-standard service IDs \
+                        "Found {} SMC #0 instructions with {} using service IDs that are \
+                         known-dangerous (PIL/fuse/security services) or non-standard \
                          (> 0x10). Pattern consistent with Qualcomm SCM call injection or \
                          TrustZone exploit payload.",
                         smc_count,

@@ -20,8 +20,7 @@
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define VAM_DEBUG_PREFIX  "[VamHook-Emu] "
 

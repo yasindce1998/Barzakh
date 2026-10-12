@@ -23,6 +23,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Pi/PiFirmwareVolume.h>
 #include <Pi/PiFirmwareFile.h>
+#include <BarzakhMode.h>
 
 //
 // FFS File type for injection

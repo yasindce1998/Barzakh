@@ -29,6 +29,8 @@
   SetVariableHook.h
   SpiFlashEmulator.c
   SpiFlashEmulator.h
+  FvbFlashAccess.c
+  FvbFlashAccess.h
   BootGuardEmulator.c
   BootGuardEmulator.h
   FvPersistence.c
@@ -56,6 +58,7 @@
 [Protocols]
   gEfiSmbiosProtocolGuid                        ## CONSUMES
   gEfiTcg2ProtocolGuid                          ## CONSUMES
+  gEfiFirmwareVolumeBlock2ProtocolGuid          ## SOMETIMES_CONSUMES
 
 [Guids]
   gEfiSmbiosTableGuid                           ## CONSUMES

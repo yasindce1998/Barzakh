@@ -120,7 +120,18 @@
 [BuildOptions]
   # Enable security features
   GCC:*_*_*_CC_FLAGS = -DBARZAKH_RESEARCH=1
-  
+
+  # Package-local headers (BarzakhMode.h)
+  GCC:*_*_*_CC_FLAGS = -I$(WORKSPACE)/BootkitPkg/Include
+
+  #
+  # Simulation/functional mode (see Include/BarzakhMode.h).
+  # Default is SIMULATION: hardware-modifying operations are logged only.
+  # A functional (real-hardware) lab build additionally defines
+  # BARZAKH_FUNCTIONAL=1 — never enable it for published artifacts.
+  #
+  # GCC:*_*_*_CC_FLAGS = -DBARZAKH_FUNCTIONAL=1
+
   # Reproducible builds
   GCC:*_*_*_CC_FLAGS = -frandom-seed=barzakh-$(SOURCE_DATE_EPOCH)
   

@@ -97,41 +97,32 @@ impl SecurebootChainDetector {
         for (i, window) in data.windows(15).enumerate() {
             // UTCTime is tag 0x17, length 0x0D (13 bytes for YYMMDDHHMMSSZ)
             if window[0] == 0x17 && window[1] == 0x0D {
-                // Parse the year from UTCTime (first 2 bytes are year)
-                let year_hi = window[2];
-                let year_lo = window[3];
-
                 // Check if this is followed by another UTCTime (validity period)
                 if i + 17 + 15 < data.len() {
                     let next_offset = i + 2 + 13; // After first UTCTime
                     if data[next_offset] == 0x17 && data[next_offset + 1] == 0x0D {
-                        let end_year_hi = data[next_offset + 2];
-                        let end_year_lo = data[next_offset + 3];
+                        // Parse full 6-digit YYMMDD dates (UTCTime body), not just years —
+                        // a short validity period can start and end in the same year.
+                        let parse_yymmdd = |bytes: &[u8]| -> Option<u32> {
+                            if bytes.len() < 6 || !bytes[..6].iter().all(|b| b.is_ascii_digit()) {
+                                return None;
+                            }
+                            let year = (bytes[0] - b'0') as u32 * 10 + (bytes[1] - b'0') as u32;
+                            let month = (bytes[2] - b'0') as u32 * 10 + (bytes[3] - b'0') as u32;
+                            let day = (bytes[4] - b'0') as u32 * 10 + (bytes[5] - b'0') as u32;
+                            if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+                                return None;
+                            }
+                            let full_year = if year < 50 { 2000 + year } else { 1900 + year };
+                            Some(full_year * 10000 + month * 100 + day)
+                        };
 
-                        // Parse years (ASCII digits)
-                        if year_hi.is_ascii_digit()
-                            && year_lo.is_ascii_digit()
-                            && end_year_hi.is_ascii_digit()
-                            && end_year_lo.is_ascii_digit()
-                        {
-                            let start_year = (year_hi - b'0') as u32 * 10 + (year_lo - b'0') as u32;
-                            let end_year =
-                                (end_year_hi - b'0') as u32 * 10 + (end_year_lo - b'0') as u32;
+                        let start_date = parse_yymmdd(&data[i + 4..i + 10]);
+                        let end_date = parse_yymmdd(&data[next_offset + 4..next_offset + 10]);
 
-                            // Normalize 2-digit year (00-49 = 2000-2049, 50-99 = 1950-1999)
-                            let start_full = if start_year < 50 {
-                                2000 + start_year
-                            } else {
-                                1900 + start_year
-                            };
-                            let end_full = if end_year < 50 {
-                                2000 + end_year
-                            } else {
-                                1900 + end_year
-                            };
-
+                        if let (Some(start_full), Some(end_full)) = (start_date, end_date) {
                             // Certificate with < 1 year validity is suspicious
-                            if end_full > start_full && (end_full - start_full) < 1 {
+                            if end_full > start_full && (end_full - start_full) < 10000 {
                                 findings.push(
                                     Finding::new(
                                         "secureboot_chain",
@@ -139,7 +130,7 @@ impl SecurebootChainDetector {
                                         "Potentially unauthorized certificate in Secure Boot db",
                                         &format!(
                                             "Certificate at offset 0x{:08X} has very short \
-                                             validity period ({}-{}). Short-lived certificates \
+                                             validity period ({} to {}). Short-lived certificates \
                                              are typical of test or debug certificates that \
                                              should not be in production Secure Boot databases.",
                                             i, start_full, end_full
@@ -148,8 +139,8 @@ impl SecurebootChainDetector {
                                     .with_confidence(0.55)
                                     .with_details(serde_json::json!({
                                         "offset": format!("0x{:08X}", i),
-                                        "validity_start_year": start_full,
-                                        "validity_end_year": end_full,
+                                        "validity_start_yyyymmdd": start_full,
+                                        "validity_end_yyyymmdd": end_full,
                                     }))
                                     .with_recommendation(
                                         "Review Secure Boot signature database for unauthorized \

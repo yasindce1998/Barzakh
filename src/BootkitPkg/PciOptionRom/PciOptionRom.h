@@ -21,8 +21,7 @@
 #include <Library/PciLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <IndustryStandard/Pci.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define OPTROM_DEBUG_PREFIX  "[PciOptRom-Emu] "
 
@@ -54,7 +53,7 @@
 // Maximum devices to scan
 //
 #define MAX_PCI_DEVICES              16
-#define OPTROM_MAX_BUS               1     // Scan bus 0 only for simulation
+#define OPTROM_MAX_BUS               2     // Scan buses 0-1 (host bridge + PCIe root ports)
 #define OPTROM_MAX_DEV               32
 #define OPTROM_MAX_FUNC              8
 

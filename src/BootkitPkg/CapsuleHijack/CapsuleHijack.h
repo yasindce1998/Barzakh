@@ -21,8 +21,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Protocol/FirmwareManagement.h>
-
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 #define CAPSULE_DEBUG_PREFIX  "[Capsule-Emu] "
 

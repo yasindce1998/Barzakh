@@ -22,11 +22,7 @@
 #include <Library/DebugLib.h>
 #include <Library/PrintLib.h>
 #include <Library/UefiBootServicesTableLib.h>
-
-//
-// Simulation mode flag - all hardware access is emulated
-//
-#define SIMULATION_MODE  TRUE
+#include <BarzakhMode.h>
 
 //
 // Debug prefix for all module logging

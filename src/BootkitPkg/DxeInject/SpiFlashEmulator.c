@@ -9,11 +9,7 @@
 **/
 
 #include "SpiFlashEmulator.h"
-
-//
-// Simulation mode - always TRUE for safety
-//
-#define SIMULATION_MODE  TRUE
+#include "FvbFlashAccess.h"
 
 /**
   Initialize SPI flash emulator.
@@ -30,7 +26,8 @@ InitializeSpiFlashEmulator (
   IN OUT SPI_FLASH_EMULATOR  *Emulator
   )
 {
-  UINT32  Index;
+  UINT32      Index;
+  EFI_STATUS  Status;
 
   if (Emulator == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -94,9 +91,27 @@ InitializeSpiFlashEmulator (
 
   DEBUG ((
     DEBUG_INFO,
-    "[SPI-Emu] Initialized %d MB emulated flash\n",
-    EMULATED_FLASH_SIZE / (1024 * 1024)
+    "[SPI-Emu] Initialized %d MB emulated flash (SIMULATION_MODE=%d)\n",
+    EMULATED_FLASH_SIZE / (1024 * 1024),
+    SIMULATION_MODE
     ));
+
+  if (!SIMULATION_MODE) {
+    //
+    // Functional build: bind the real FVB2 flash backend now so the
+    // write/erase paths can program actual flash. This is the real
+    // LoJax-style persistence path — kill-switches have already been
+    // validated by the caller (DxeInjectEntry) before we get here.
+    //
+    Status = FvbLocate ();
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "[SPI-Emu] FVB2 backend unavailable: %r\n", Status));
+      CleanupSpiFlashEmulator (Emulator);
+      return Status;
+    }
+
+    DEBUG ((DEBUG_WARN, "[SPI-Emu] FUNCTIONAL BUILD: real flash writes ENABLED\n"));
+  }
 
   return EFI_SUCCESS;
 }
@@ -204,7 +219,8 @@ SpiFlashWrite (
   IN UINT8               *Buffer
   )
 {
-  UINT32  Region;
+  EFI_STATUS  Status;
+  UINT32      Region;
 
   if (Emulator == NULL || Buffer == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -259,8 +275,16 @@ SpiFlashWrite (
       ));
   } else {
     //
-    // Copy to emulated flash
+    // Functional build: write through the FVB2 protocol (the real
+    // LoJax-style persistence path), then mirror into the shadow
+    // buffer so subsequent reads/PRx checks still work.
     //
+    Status = FvbWriteRange (Offset, Size, Buffer);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "[SPI-Emu] FVB2 write failed: %r\n", Status));
+      return Status;
+    }
+
     CopyMem (&Emulator->FlashMemory[Offset], Buffer, Size);
   }
 
@@ -294,7 +318,8 @@ SpiFlashErase (
   IN UINT32              Size
   )
 {
-  UINT32  Region;
+  EFI_STATUS  Status;
+  UINT32      Region;
 
   if (Emulator == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -341,6 +366,16 @@ SpiFlashErase (
       Offset
       ));
   } else {
+    //
+    // Functional build: erase through the FVB2 protocol, then mirror
+    // the erased state into the shadow buffer.
+    //
+    Status = FvbEraseRange (Offset, Size);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "[SPI-Emu] FVB2 erase failed: %r\n", Status));
+      return Status;
+    }
+
     //
     // Set to 0xFF (erased state)
     //
