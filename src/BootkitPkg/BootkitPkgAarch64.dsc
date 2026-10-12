@@ -44,6 +44,9 @@
   GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_RESEARCH=1 -I$(WORKSPACE)/BootkitPkg/Include -Wall -Wno-unused-parameter -Werror=implicit-function-declaration -fno-stack-protector
   #
   # Functional (real-hardware) lab build — see Include/BarzakhMode.h.
-  # Simulation is the default; never enable this for published artifacts.
+  # Simulation is the default; pass -D BARZAKH_FUNCTIONAL=1 on the build
+  # command line for a functional lab build — never for published artifacts.
   #
-  # GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_FUNCTIONAL=1
+!ifdef BARZAKH_FUNCTIONAL
+  GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_FUNCTIONAL=1
+!endif

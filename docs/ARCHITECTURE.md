@@ -156,6 +156,7 @@ barzakh/
 │   ├── ARCHITECTURE.md       # This file
 │   ├── ANDROID_BOOT.md       # Android boot security (9 modules)
 │   ├── TESTING.md            # Testing strategy
+│   ├── LAB_TESTING.md        # Hardware lab testing & build-mode reference
 │   └── USECASES.md           # Offense & defense use cases
 ├── src/
 │   ├── BootkitPkg/           # EDK II package: UEFI bootkit emulation (C)
@@ -163,6 +164,7 @@ barzakh/
 │   │   ├── ExitBootHook/     # ExitBootServices interception & MSR hooking
 │   │   ├── Aarch64/          # ARM64 modules (ExceptionVectorHook, etc.)
 │   │   └── RiscV/            # RISC-V M-mode firmware injection
+│   ├── LegacyBootkit/        # Legacy BIOS (16-bit asm) MBR/VBR bootkit
 │   ├── AttestationPkg/       # Defensive TPM querying & event log extractors
 │   └── barzakh-scanner-rs/   # Rust workspace
 │       ├── crates/barzakh-core/      # Detection engine library
@@ -172,6 +174,10 @@ barzakh/
 │   ├── build.sh              # EDK II compilation
 │   ├── qemu-run.sh           # QEMU test harness with vTPM
 │   ├── qemu-e2e.sh           # End-to-end testing
+│   ├── qemu-automation.sh    # Automated QEMU test sequences
+│   ├── generate-corpus.sh    # Adversary corpus generation
+│   ├── dump-pcrs.sh          # PCR value extraction
+│   ├── dump-memory.sh        # Memory acquisition for analysis
 │   ├── validate-environment.sh # Pre-flight checks
 │   └── audit-log.sh          # Append-only execution audit logger
 ├── tests/                    # Unit, integration, and corpus tests
@@ -183,7 +189,7 @@ barzakh/
 
 ## 7. Adversary Crate Architecture
 
-The `barzakh-adversary` crate implements a red-team payload generation and validation framework. It is exposed to end-users via the standalone `barzakh-adversary` binary (built from `barzakh-cli/src/adversary_main.rs`), which provides CLI commands: `generate`, `list`, `corpus`, `validate`, `qemu`, and `esp`.
+The `barzakh-adversary` crate implements a red-team payload generation and validation framework. It is exposed to end-users via the standalone `barzakh-adversary` binary (built from `barzakh-cli/src/adversary_main.rs`), which provides CLI commands: `generate`, `list`, `corpus`, `validate`, `qemu`, `esp`, and `inject-single`.
 
 ### 7.1 Payload Trait
 

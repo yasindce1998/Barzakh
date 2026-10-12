@@ -127,10 +127,13 @@
   #
   # Simulation/functional mode (see Include/BarzakhMode.h).
   # Default is SIMULATION: hardware-modifying operations are logged only.
-  # A functional (real-hardware) lab build additionally defines
-  # BARZAKH_FUNCTIONAL=1 — never enable it for published artifacts.
+  # A functional (real-hardware) lab build passes -D BARZAKH_FUNCTIONAL=1
+  # on the build command line (translated to the compiler define below) —
+  # never enable it for published artifacts.
   #
-  # GCC:*_*_*_CC_FLAGS = -DBARZAKH_FUNCTIONAL=1
+!ifdef BARZAKH_FUNCTIONAL
+  GCC:*_*_*_CC_FLAGS = -DBARZAKH_FUNCTIONAL=1
+!endif
 
   # Reproducible builds
   GCC:*_*_*_CC_FLAGS = -frandom-seed=barzakh-$(SOURCE_DATE_EPOCH)

@@ -28,7 +28,7 @@
 Barzakh is a full-stack firmware security research platform that models real-world bootkit TTPs across every privilege ring — from UEFI DXE drivers (Ring 0) down through SMM, Intel ME, AMD PSP, platform DMA controllers (Ring -3), and CPU microarchitectural threats (Ring -4). It pairs each offense technique with a corresponding detection engine, creating a closed-loop system where every attack is both reproducible and detectable.
 
 **Key capabilities:**
-- **31 offense modules** spanning x86_64, AArch64/Apple Silicon, and RISC-V architectures
+- **21 EDK II offense modules** spanning x86_64, AArch64/Apple Silicon, and RISC-V architectures
 - **121 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
 - **116 adversary payload generators** for automated true-positive validation
 - **Full Ring -4 coverage** — CPU microcode, speculative execution, thermal/power covert channels, voltage glitching, debug interfaces, rowhammer
@@ -65,19 +65,15 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 
 ### 1. BootkitPkg — Offense Emulation (C11, EDK II)
 
-**31 modules** across 4 architectures emulating every known firmware persistence technique:
+**21 EDK II modules** across 3 architectures (x86_64, AArch64, RISC-V) emulating every known firmware persistence technique:
 
 <details>
-<summary><b>x86_64 Core (17 modules)</b></summary>
+<summary><b>x86_64 Core (13 modules)</b></summary>
 
 | Module | Ring | Technique |
 |--------|------|-----------|
-| `DxeInject` | 0 | DXE phase driver injection with kill-switches |
+| `DxeInject` | 0 | DXE phase driver injection — LoadImage/StartImage + SetVariable hooks, FV persistence, SPI flash emulator with FVB2/Boot Guard backends, kill-switches |
 | `ExitBootHook` | 0 | ExitBootServices interception + MSR hooking |
-| `LoadImageHook` | 0 | Boot Services LoadImage/StartImage redirection |
-| `SetVariableHook` | 0 | NVRAM variable manipulation |
-| `FvPersistence` | 0 | Firmware Volume implant persistence |
-| `SpiFlashEmulator` | -1 | SPI controller register emulation |
 | `SpiChipsetEmulator` | -1 | Chipset-level SPI interface simulation |
 | `SmmPersistence` | -1 | SMM handler installation and SMRAM persistence |
 | `CapsuleHijack` | -1 | UEFI capsule update mechanism abuse |
@@ -122,7 +118,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 2. Barzakh Scanner — Detection Engine (Rust)
 
-**105 specialized detectors** organized by attack surface:
+**121 specialized detectors** organized by attack surface:
 
 <details>
 <summary><b>Full Detector List</b></summary>
@@ -130,60 +126,59 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | # | Detector | Category | What It Finds |
 |---|----------|----------|---------------|
 | 1 | `pcr` | TPM | PCR value anomalies indicating measurement tampering |
-| 2 | `pcr_replay` | TPM | PCR replay attack artifacts |
-| 3 | `pcr_oracle` | TPM | PCR prediction/oracle patterns |
-| 4 | `attestation` | TPM | Remote attestation integrity failures |
-| 5 | `hook` | Memory | Boot Services / Runtime Services table hooks |
-| 6 | `memory` | Memory | Suspicious memory region patterns |
-| 7 | `runtime` | Memory | Runtime service pointer manipulation |
-| 8 | `introspection` | Memory | Self-modifying code and anti-analysis |
-| 9 | `smm` | Memory | SMRAM boundary and handler anomalies |
-| 10 | `firmware_volume` | Structure | FV header/checksum corruption |
-| 11 | `spi_integrity` | Structure | SPI flash image structural violations |
-| 12 | `differ` | Structure | Binary diffing against known-good baseline |
-| 13 | `mbr` | Structure | MBR/VBR modification detection |
-| 14 | `entropy` | Structure | Abnormal entropy indicating encrypted payloads |
-| 15 | `eventlog` | Structure | TCG Event Log manipulation |
-| 16 | `secureboot` | Chain | Secure Boot variable integrity |
-| 17 | `self_erasure` | Behavioral | Post-execution cleanup patterns |
-| 18 | `timetravel` | Behavioral | Timestamp manipulation artifacts |
-| 19 | `symexec` | Behavioral | Symbolic execution of suspicious code paths |
-| 20 | `smm_timing` | Ring -3 | SMM handler timing anomalies + TSEG lock status |
-| 21 | `s3_bootscript` | Ring -3 | S3 resume boot script DISPATCH abuse |
-| 22 | `me_spi` | Ring -3 | Intel ME/SPI flash descriptor manipulation |
-| 23 | `acpi_integrity` | Ring -3 | ACPI table checksum + AML injection detection |
-| 24 | `heci` | Ring -3 | HECI bus communication anomalies |
-| 25 | `amt` | Ring -3 | AMT/SOL provisioning and channel abuse |
-| 26 | `ftpm` | Ring -3 | AMD fTPM command/response forgery |
-| 27 | `me_dma` | Ring -3 | ME-initiated DMA transaction detection |
-| 28 | `spi_region` | Ring -3 | SPI flash region boundary violations |
-| 29 | `optionrom` | Ring -3 | Malicious PCI Option ROM injection |
-| 30 | `nvram_entropy` | Ring -3 | NVRAM capsule anomaly detection |
-| 31 | `logofail` | Boot Process | Malicious BMP/image parser overflow (CVE-2023-40238) |
-| 32 | `pixiefail` | Network/PXE | DHCPv6/PXE stack exploits (CVE-2023-45229+) |
-| 33 | `blacklotus` | Boot Process | BlackLotus bootkit MOK/BCD manipulation |
-| 34 | `amd_psp` | Platform | AMD PSP directory/firmware tampering |
-| 35 | `boot_guard` | Platform | Intel Boot Guard ACM/KM/BPM policy bypass |
-| 36 | `auth_variable` | Chain | UEFI authenticated variable (PK/KEK/db) rollback |
-| 37 | `dxe_dispatcher` | Boot Process | DXE dependency expression hijacking |
-| 38 | `pei_implant` | Boot Process | PEI Core/PEIM phase rootkit implants |
-| 39 | `capsule_update` | Structure | Firmware capsule update header abuse |
-| 40 | `cxl_device` | Hardware/Bus | CXL.mem DMA attacks against system memory |
-| 41 | `arm_trustzone` | ARM/TrustZone | OP-TEE TA tampering, SMC call injection, IMG4 bypass |
-| 42 | `opensbi` | RISC-V | OpenSBI extension table hooking, mtvec redirect, M-mode escalation |
-| 43 | `pmp_bypass` | RISC-V | PMP misconfiguration, CSR write sequences, M-mode RWX regions |
-| 44 | `linux_bootchain` | Boot Process | Linux UEFI bootkit detection (Bootkitty GRUB patches) |
-| 45 | `reloader` | Boot Process | CVE-2024-7344 signed UEFI app loading unsigned payloads |
-| 46 | `sbat` | Chain | SBAT revocation counter rollback detection |
-| 47 | `esp_integrity` | Structure | ESP partition rootkit persistence patterns |
-| 48 | `confidential_vm` | Platform | Intel TDX / AMD SEV-SNP measurement manipulation |
-| 49 | `bmc_spi` | Ring -3 | BMC-to-host lateral movement via SPI flash |
-| 50 | `http_boot` | Network/PXE | UEFI HTTP Boot MITM with embedded PE payloads |
-| 51 | `tpm_command` | TPM | CVE-2023-1017/1018 TPM 2.0 command buffer overflow |
-| 52 | `arm_tbbr` | ARM/TrustZone | ARM Trusted Board Boot Requirements chain bypass |
-| 53 | `wifi_dxe` | Hardware/Bus | Intel CNVi wireless DXE firmware injection |
-| 54 | `pluton` | Platform | Microsoft Pluton security processor interception |
-|  | `secureboot_chain` | Chain | Full Secure Boot chain-of-trust validation |
+| 2 | `pcr_oracle` | TPM | PCR prediction/oracle patterns |
+| 3 | `attestation` | TPM | Remote attestation integrity failures |
+| 4 | `hook` | Memory | Boot Services / Runtime Services table hooks |
+| 5 | `memory` | Memory | Suspicious memory region patterns |
+| 6 | `runtime` | Memory | Runtime service pointer manipulation |
+| 7 | `live` | Behavioral | Live-response memory analysis — Boot Services table tampering and injected PE code |
+| 8 | `smm` | Memory | SMRAM boundary and handler anomalies |
+| 9 | `firmware_volume` | Structure | FV header/checksum corruption |
+| 10 | `spi_integrity` | Structure | SPI flash image structural violations |
+| 11 | `firmware_differ` | Structure | Binary diffing against known-good baseline |
+| 12 | `mbr` | Structure | MBR/VBR modification detection |
+| 13 | `entropy` | Structure | Abnormal entropy indicating encrypted payloads |
+| 14 | `eventlog` | Structure | TCG Event Log manipulation |
+| 15 | `secureboot` | Chain | Secure Boot variable integrity |
+| 16 | `self_erasure` | Behavioral | Post-execution cleanup patterns |
+| 17 | `timetravel` | Behavioral | Timestamp manipulation artifacts |
+| 18 | `symexec` | Behavioral | Symbolic execution of suspicious code paths |
+| 19 | `smm_timing` | Ring -3 | SMM handler timing anomalies + TSEG lock status |
+| 20 | `s3_bootscript` | Ring -3 | S3 resume boot script DISPATCH abuse |
+| 21 | `me_spi` | Ring -3 | Intel ME/SPI flash descriptor manipulation |
+| 22 | `acpi_integrity` | Ring -3 | ACPI table checksum + AML injection detection |
+| 23 | `heci` | Ring -3 | HECI bus communication anomalies |
+| 24 | `amt` | Ring -3 | AMT/SOL provisioning and channel abuse |
+| 25 | `ftpm` | Ring -3 | AMD fTPM command/response forgery |
+| 26 | `me_dma` | Ring -3 | ME-initiated DMA transaction detection |
+| 27 | `spi_region` | Ring -3 | SPI flash region boundary violations |
+| 28 | `optionrom` | Ring -3 | Malicious PCI Option ROM injection |
+| 29 | `nvram_entropy` | Ring -3 | NVRAM capsule anomaly detection |
+| 30 | `logofail` | Boot Process | Malicious BMP/image parser overflow (CVE-2023-40238) |
+| 31 | `pixiefail` | Network/PXE | DHCPv6/PXE stack exploits (CVE-2023-45229+) |
+| 32 | `blacklotus` | Boot Process | BlackLotus bootkit MOK/BCD manipulation |
+| 33 | `amd_psp` | Platform | AMD PSP directory/firmware tampering |
+| 34 | `boot_guard` | Platform | Intel Boot Guard ACM/KM/BPM policy bypass |
+| 35 | `auth_variable` | Chain | UEFI authenticated variable (PK/KEK/db) rollback |
+| 36 | `dxe_dispatcher` | Boot Process | DXE dependency expression hijacking |
+| 37 | `pei_implant` | Boot Process | PEI Core/PEIM phase rootkit implants |
+| 38 | `capsule_update` | Structure | Firmware capsule update header abuse |
+| 39 | `cxl_device` | Hardware/Bus | CXL.mem DMA attacks against system memory |
+| 40 | `arm_trustzone` | ARM/TrustZone | OP-TEE TA tampering, SMC call injection, IMG4 bypass |
+| 41 | `opensbi` | RISC-V | OpenSBI extension table hooking, mtvec redirect, M-mode escalation |
+| 42 | `pmp_bypass` | RISC-V | PMP misconfiguration, CSR write sequences, M-mode RWX regions |
+| 43 | `linux_bootchain` | Boot Process | Linux UEFI bootkit detection (Bootkitty GRUB patches) |
+| 44 | `reloader` | Boot Process | CVE-2024-7344 signed UEFI app loading unsigned payloads |
+| 45 | `sbat` | Chain | SBAT revocation counter rollback detection |
+| 46 | `esp_integrity` | Structure | ESP partition rootkit persistence patterns |
+| 47 | `confidential_vm` | Platform | Intel TDX / AMD SEV-SNP measurement manipulation |
+| 48 | `bmc_spi` | Ring -3 | BMC-to-host lateral movement via SPI flash |
+| 49 | `http_boot` | Network/PXE | UEFI HTTP Boot MITM with embedded PE payloads |
+| 50 | `tpm_command` | TPM | CVE-2023-1017/1018 TPM 2.0 command buffer overflow |
+| 51 | `arm_tbbr` | ARM/TrustZone | ARM Trusted Board Boot Requirements chain bypass |
+| 52 | `wifi_dxe` | Hardware/Bus | Intel CNVi wireless DXE firmware injection |
+| 53 | `pluton` | Platform | Microsoft Pluton security processor interception |
+| 54 | `secureboot_chain` | Chain | Full Secure Boot chain-of-trust validation |
 | 55 | `microcode_injection` | Ring -4 | Malicious/unauthorized CPU microcode update detection |
 | 56 | `spectre_gadgets` | Ring -4 | Spectre/Meltdown gadget chains and missing barriers |
 | 57 | `thermal_covert` | Ring -4 | Thermal/power covert channel patterns (RAPL MSR abuse) |
@@ -194,47 +189,63 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | 62 | `idrac_spi` | Ring -3 | Dell iDRAC BMC-to-host SPI flash lateral movement |
 | 63 | `insyde_smm` | Ring -2 | Insyde H2O IHISI SMM handler exploitation (CVE-2022-24894) |
 | 64 | `lvfs_integrity` | Chain | LVFS/fwupd metadata spoofing and Jcat signature forgery |
-| 65 | `arm_tbbr_chain` | ARM/TrustZone | ARM TBBR certificate chain bypass with zeroed hashes |
-| 66 | `riscv_pmp_advanced` | RISC-V | Advanced PMP/ePMP bypass with mstatus manipulation |
-| 67 | `android_pkvm` | Android | pKVM hypervisor (AVF) — pvmfw signature forgery, EL2 shellcode |
-| 68 | `android_dice` | Android | DICE attestation chain — CDI forgery, UDS tampering |
-| 69 | `android_gki_boot` | Android | GKI boot.img v4/v5 — AVB hash mismatch, ramdisk tampering |
-| 70 | `android_rkp` | Android | Remote Key Provisioning — EEK certificate chain spoofing |
-| 71 | `android_binary_transparency` | Android | Pixel Binary Transparency — Merkle inclusion proof forgery |
-| 72 | `android_trusty` | Android | Trusty TEE — signature bypass, entry point patching |
-| 73 | `android_bootctrl` | Android | Boot Control HAL — A/B slot poisoning, retry exhaustion |
-| 74 | `android_vendor_dlkm` | Android | vendor_dlkm — unsigned kernel module injection via EROFS |
-| 75 | `android_bootconfig` | Android | Bootconfig parameter injection — init override, SELinux disable |
-| 76 | `iommu_dmar` | DMA/IOMMU | VT-d DMAR / AMD IVRS stripped of DRHD/IVHD units — pre-boot DMA exposure (Thunderspy/PCILeech) |
-| 77 | `secureboot_dbx` | Secure Boot | dbx revocation list emptied/rolled back — re-enables revoked loaders (BlackLotus-class) |
-| 78 | `apple_img4` | Apple | Img4/IM4M manifest with CPRO/CSEC disabled or zeroed boot nonce — permissive SEP boot policy |
-| 79 | `windows_bootchain` | Windows | BCD nointegritychecks/testsigning, missing ELAM — unsigned boot-driver loading |
-| 80 | `android_avb` | Android | Verified Boot vbmeta VERIFICATION/HASHTREE disabled + rollback-index reset |
-| 81 | `android_fastboot` | Android | Bootloader unlocked/unlockable — unsigned image flashing |
-| 82 | `android_keymint` | Android | Key attestation downgraded to SOFTWARE level / Unverified boot state |
-| 83 | `wifi_firmware` | Wireless | WLAN controller firmware (brcmfmac) with injected code stub past signed image |
-| 84 | `network_boot` | Network | iPXE boot script chainloads an external attacker-controlled image (PXE redirect) |
-| 85 | `bluetooth_firmware` | Wireless | BT controller patchram Write_RAM/Launch_RAM implant (Broadcom/Cypress) |
-| 86 | `ios_trustcache` | iOS | Injected AMFI Trust Cache authorizes ad-hoc cdhash — unsigned code execution |
-| 87 | `ios_amfi` | iOS | Code-signing enforcement disabled via boot-args (amfi_get_out_of_my_way / cs_enforcement_disable) |
-| 88 | `ios_ktrr` | iOS | KTRR/CTRR (AMCC) kernel-text lockdown not engaged — kernel patch protection bypass |
-| 89 | `ios_sep_downgrade` | iOS | Secure Enclave personalization nonce zeroed — replayable APTicket / SEP downgrade |
-| 90 | `baseband_firmware` | Telecom | Cellular baseband firmware implant detection (Shannon/Exynos/MediaTek) |
-| 91 | `baseband_rtos` | Telecom | Baseband RTOS (ThreadX/Nucleus/REX/QuRT) IVT hooks and task injection |
-| 92 | `five_g_ran` | Telecom | 5G RAN gNodeB firmware tampering — O-RAN split manipulation |
-| 93 | `ims_firmware` | Telecom | IMS/VoLTE core firmware SIP header injection and RTP interception |
-| 94 | `open_ran_du` | Telecom | Open RAN Distributed Unit eCPRI/F1 interface tampering |
-| 95 | `sim_toolkit` | Telecom | SIM Toolkit applet injection — STK command interception |
-| 96 | `small_cell` | Telecom | Small cell/femtocell firmware backdoors — rogue eNodeB detection |
-| 97 | `volte_firmware` | Telecom | VoLTE/VoNR modem DSP firmware implant and codec interception |
-| 98 | `ccsds_telecommand` | Satellite | CCSDS telecommand auth bypass — SDLS encryption/MAC forgery |
-| 99 | `gnss_firmware` | Satellite | GNSS receiver firmware spoofing — ephemeris/PVT manipulation |
-| 100 | `satellite_bus` | Satellite | Satellite bus (I2C/SpaceWire/MIL-STD-1553) command injection |
-| 101 | `satellite_modem` | Satellite | VSAT/DVB-S2 modem firmware code injection and traffic mirroring |
-| 102 | `space_debris_tracking` | Satellite | Space situational awareness firmware — TLE/conjunction manipulation |
-| 103 | `starlink_terminal` | Satellite | LEO terminal (Starlink/OneWeb/Kuiper) bootloader bypass and beam manipulation |
-| 104 | `transponder_firmware` | Satellite | Satellite transponder firmware — frequency plan and power manipulation |
-| 105 | `vsat_terminal` | Satellite | VSAT terminal management interface backdoors and config tampering |
+| 65 | `android_pkvm` | Android | pKVM hypervisor (AVF) — pvmfw signature forgery, EL2 shellcode |
+| 66 | `android_dice` | Android | DICE attestation chain — CDI forgery, UDS tampering |
+| 67 | `android_gki_boot` | Android | GKI boot.img v4/v5 — AVB hash mismatch, ramdisk tampering |
+| 68 | `android_rkp` | Android | Remote Key Provisioning — EEK certificate chain spoofing |
+| 69 | `android_binary_transparency` | Android | Pixel Binary Transparency — Merkle inclusion proof forgery |
+| 70 | `android_trusty` | Android | Trusty TEE — signature bypass, entry point patching |
+| 71 | `android_bootctrl` | Android | Boot Control HAL — A/B slot poisoning, retry exhaustion |
+| 72 | `android_vendor_dlkm` | Android | vendor_dlkm — unsigned kernel module injection via EROFS |
+| 73 | `android_bootconfig` | Android | Bootconfig parameter injection — init override, SELinux disable |
+| 74 | `iommu_dmar` | DMA/IOMMU | VT-d DMAR / AMD IVRS stripped of DRHD/IVHD units — pre-boot DMA exposure (Thunderspy/PCILeech) |
+| 75 | `secureboot_dbx` | Secure Boot | dbx revocation list emptied/rolled back — re-enables revoked loaders (BlackLotus-class) |
+| 76 | `apple_img4` | Apple | Img4/IM4M manifest with CPRO/CSEC disabled or zeroed boot nonce — permissive SEP boot policy |
+| 77 | `windows_bootchain` | Windows | BCD nointegritychecks/testsigning, missing ELAM — unsigned boot-driver loading |
+| 78 | `android_avb` | Android | Verified Boot vbmeta VERIFICATION/HASHTREE disabled + rollback-index reset |
+| 79 | `android_fastboot` | Android | Bootloader unlocked/unlockable — unsigned image flashing |
+| 80 | `android_keymint` | Android | Key attestation downgraded to SOFTWARE level / Unverified boot state |
+| 81 | `wifi_firmware` | Wireless | WLAN controller firmware (brcmfmac) with injected code stub past signed image |
+| 82 | `network_boot` | Network | iPXE boot script chainloads an external attacker-controlled image (PXE redirect) |
+| 83 | `bluetooth_firmware` | Wireless | BT controller patchram Write_RAM/Launch_RAM implant (Broadcom/Cypress) |
+| 84 | `ios_trustcache` | iOS | Injected AMFI Trust Cache authorizes ad-hoc cdhash — unsigned code execution |
+| 85 | `ios_amfi` | iOS | Code-signing enforcement disabled via boot-args (amfi_get_out_of_my_way / cs_enforcement_disable) |
+| 86 | `ios_ktrr` | iOS | KTRR/CTRR (AMCC) kernel-text lockdown not engaged — kernel patch protection bypass |
+| 87 | `ios_sep_downgrade` | iOS | Secure Enclave personalization nonce zeroed — replayable APTicket / SEP downgrade |
+| 88 | `baseband_firmware` | Telecom | Cellular baseband firmware implant detection (Shannon/Exynos/MediaTek) |
+| 89 | `baseband_rtos` | Telecom | Baseband RTOS (ThreadX/Nucleus/REX/QuRT) IVT hooks and task injection |
+| 90 | `5g_ran_firmware` | Telecom | 5G RAN gNodeB firmware tampering — O-RAN split manipulation |
+| 91 | `ims_firmware` | Telecom | IMS/VoLTE core firmware SIP header injection and RTP interception |
+| 92 | `open_ran` | Telecom | Open RAN Distributed Unit eCPRI/F1 interface tampering |
+| 93 | `sim_applet` | Telecom | SIM Toolkit applet injection — STK command interception |
+| 94 | `small_cell` | Telecom | Small cell/femtocell firmware backdoors — rogue eNodeB detection |
+| 95 | `volte_firmware` | Telecom | VoLTE/VoNR modem DSP firmware implant and codec interception |
+| 96 | `ccsds_telecommand` | Satellite | CCSDS telecommand auth bypass — SDLS encryption/MAC forgery |
+| 97 | `gnss_receiver` | Satellite | GNSS receiver firmware spoofing — ephemeris/PVT manipulation |
+| 98 | `satellite_bus` | Satellite | Satellite bus (I2C/SpaceWire/MIL-STD-1553) command injection |
+| 99 | `satellite_modem` | Satellite | VSAT/DVB-S2 modem firmware code injection and traffic mirroring |
+| 100 | `starlink_terminal` | Satellite | LEO terminal (Starlink/OneWeb/Kuiper) bootloader bypass and beam manipulation |
+| 101 | `satellite_transponder` | Satellite | Satellite transponder firmware — frequency plan and power manipulation |
+| 102 | `android_chain_validator` | Android | Verified-boot chain cross-validation — pKVM/DICE/GKI components present but unsigned or unlinked |
+| 103 | `android_init_verity` | Android | init boot/dm-verity — veritymode=disabled boot params, orange verified-boot state |
+| 104 | `android_vbmeta_chain` | Android | vbmeta chain-of-trust — AVB_ALGORITHM_TYPE_NONE, rollback index reset, unbound partition hashes |
+| 105 | `boot_guard_km` | Platform | Intel Boot Guard Key Manifest — zeroed/forged key hash, unenforced Boot Policy Manifest |
+| 106 | `csme_update` | Ring -3 | Intel CSME $CPD update manifest — version and entry-count anomalies |
+| 107 | `me_manufacturing_mode` | Ring -3 | Intel ME flash descriptor — FITM manufacturing-mode bit set |
+| 108 | `me_version_chain` | Ring -3 | Intel ME $MN2 firmware manifests — SVN rollback across partitions |
+| 109 | `dell_bios_connect` | Network | Dell BIOSConnect/SupportAssist — network-fetching DXE calling home over TLS |
+| 110 | `msi_key_reuse` | Platform | Boot Guard OEM key-hash reuse across vendors (MSI key-leak class) |
+| 111 | `psp_secure_debug` | Platform | AMD PSP debug-unlock tokens and debug policy directory entries |
+| 112 | `psp_trustlets` | Platform | AMD PSP Trustlet OS — injected or unknown TOS directory entries |
+| 113 | `psp_version_chain` | Platform | AMD PSP L2 directory — security version number rollback |
+| 114 | `smu_firmware` | Platform | AMD SMU power-management firmware — unsigned image |
+| 115 | `ios_ane_boot` | iOS | Apple Neural Engine firmware — development flags, zeroed signature |
+| 116 | `ios_iboot` | iOS | iBoot stage loader — stripped version string, zeroed RSA signature |
+| 117 | `ios_local_policy` | iOS | Local policy blob — zeroed nonce hash and next-stage hash (chain binding broken) |
+| 118 | `ios_ppl` | iOS | Page Protection Layer — APRR config disabled, all-permissive PTEs |
+| 119 | `ios_secure_enclave` | iOS | Secure Enclave firmware image — debug flags, unsigned image |
+| 120 | `inmarsat_terminal` | Satellite | Inmarsat/BGAN satcom terminal firmware implants |
+| 121 | `satellite_ground_station` | Satellite | Ground station firmware — telecommand injection, antenna tracking override |
 
 </details>
 
@@ -242,10 +253,9 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 | Metric | Target | Method |
 |--------|--------|--------|
-| True Positive Rate | ≥ 85% | Validated via adversary corpus |
-| False Positive Rate | < 5% | Measured against clean firmware baselines |
-| ROC-AUC | ≥ 0.92 | Aggregated across all detector categories |
-| Scan Latency | < 500ms | Per-image, full 105-detector sweep |
+| True Positive Rate | ≥ 80% (CI-enforced) | Measured via adversary corpus |
+| False Positive Rate | ≤ 10% (CI-enforced) | Measured against clean firmware baselines |
+| Scan Latency | < 500ms | Per-image, full 121-detector sweep |
 
 ---
 
@@ -265,11 +275,11 @@ barzakh-adversary esp --payload dxe_persistence # Build ESP image for hardware t
 
 | Payload | Target Detector | Technique |
 |---------|----------------|-----------|
-| `signature_plant` | `hook` | Plants Boot Services hook signatures |
+| `signature_plant` | `memory` | Plants Boot Services hook signatures |
 | `fv_tamper` | `firmware_volume` | Corrupts FV headers/checksums |
-| `boot_services_hook` | `hook`, `memory` | Injects BS table redirections |
-| `pe_inject` | `differ`, `entropy` | Embeds PE payloads in firmware volumes |
-| `trampoline` | `runtime`, `self_erasure` | Installs runtime trampolines |
+| `boot_services_hook` | `hook` | Injects BS table redirections |
+| `pe_inject` | `memory` | Embeds PE payloads in firmware volumes |
+| `trampoline` | `memory` | Installs runtime trampolines |
 | `me_spi_region` | `me_spi` | Manipulates flash descriptor regions |
 | `amt_sol` | `amt` | Injects AMT SOL provisioning artifacts |
 | `ftpm_forge` | `ftpm` | Forges fTPM command sequences |
@@ -314,8 +324,8 @@ barzakh-adversary esp --payload dxe_persistence # Build ESP image for hardware t
 | `sev_snp_vmpl_escape` | `confidential_vm` | AMD SEV-SNP VMPL privilege confusion attack |
 | `asus_nvram_redirect` | `asus_nvram` | ASUS EZ Flash NVRAM URL redirect + signature bypass |
 | `idrac_spi_lateral` | `idrac_spi` | Dell iDRAC BMC-to-host SPI flash write attack |
-| `insyde_smm_overflow` | `insyde_smm` | Insyde H2O capsule SMM buffer overflow |
-| `lvfs_metadata_spoof` | `lvfs_integrity` | LVFS metadata spoofing + Jcat signature forgery |
+| `insyde_smm_capsule` | `insyde_smm` | Insyde H2O capsule SMM buffer overflow |
+| `lvfs_capsule_spoof` | `lvfs_integrity` | LVFS metadata spoofing + Jcat signature forgery |
 | `android_pkvm_escape` | `android_pkvm` | pKVM pvmfw signature forgery + EL2 shellcode |
 | `android_dice_forge` | `android_dice` | DICE CBOR certificate chain with predictable CDI |
 | `android_gki_tamper` | `android_gki_boot` | GKI boot.img v4 with invalid AVB hash |
@@ -327,20 +337,60 @@ barzakh-adversary esp --payload dxe_persistence # Build ESP image for hardware t
 | `android_bootconfig_inject` | `android_bootconfig` | Bootconfig with init override + SELinux disable |
 | `baseband_implant` | `baseband_firmware` | Baseband firmware implant with NOP sled and modem hooks |
 | `baseband_rtos_hook` | `baseband_rtos` | RTOS IVT hook and spy task injection |
-| `five_g_ran_backdoor` | `five_g_ran` | 5G gNodeB unsigned code section injection |
-| `ims_firmware_patch` | `ims_firmware` | IMS core firmware SIP header interception |
-| `open_ran_du_tamper` | `open_ran_du` | O-RAN DU eCPRI non-standard message injection |
-| `sim_applet_inject` | `sim_toolkit` | SIM Toolkit applet injection with STK hooks |
+| `5g_ran_backdoor` | `5g_ran_firmware` | 5G gNodeB unsigned code section injection |
+| `ims_firmware_tamper` | `ims_firmware` | IMS core firmware SIP header interception |
+| `open_ran_du_tamper` | `open_ran` | O-RAN DU eCPRI non-standard message injection |
+| `sim_applet_inject` | `sim_applet` | SIM Toolkit applet injection with STK hooks |
 | `small_cell_implant` | `small_cell` | Small cell firmware backdoor with rogue eNodeB |
 | `volte_modem_patch` | `volte_firmware` | VoLTE DSP ELF implant + codec path interception |
 | `ccsds_telecommand_inject` | `ccsds_telecommand` | CCSDS SDLS auth bypass + telecommand injection |
-| `gnss_firmware_spoof` | `gnss_firmware` | GNSS receiver firmware ephemeris spoofing |
+| `gnss_firmware_spoof` | `gnss_receiver` | GNSS receiver firmware ephemeris spoofing |
 | `satellite_bus_tamper` | `satellite_bus` | Satellite bus OBC command injection via I2C/SpaceWire |
 | `satellite_modem_implant` | `satellite_modem` | VSAT modem NOP sled + traffic mirroring |
-| `satcom_terminal_implant` | `starlink_terminal` | LEO terminal bootloader bypass + beam intercept |
-| `space_debris_tracking_spoof` | `space_debris_tracking` | SSA firmware TLE/conjunction manipulation |
-| `transponder_firmware_inject` | `transponder_firmware` | Transponder firmware frequency plan injection |
-| `vsat_terminal_backdoor` | `vsat_terminal` | VSAT terminal management interface backdoor |
+| `satcom_terminal_implant` | `inmarsat_terminal` | Satcom terminal (Inmarsat/BGAN) bootloader bypass + traffic intercept |
+| `transponder_firmware_inject` | `satellite_transponder` | Transponder firmware frequency plan injection |
+| `android_avb_rollback` | `android_avb` | AVB vbmeta with verification + dm-verity hashtree disabled and rollback index reset |
+| `android_vbmeta_tamper` | `android_vbmeta_chain` | vbmeta with AVB_ALGORITHM_TYPE_NONE and zero rollback index — no partition hashes bound |
+| `android_verity_disable` | `android_init_verity` | dm-verity disabled flag plus veritymode=disabled boot parameter |
+| `android_chain_break` | `android_chain_validator` | pKVM/DICE/GKI chain components present but unsigned (zeroed signatures, broken derivation) |
+| `android_fastboot_unlock` | `android_fastboot` | Unlocked bootloader state — orange verified-boot, unlock_critical capability |
+| `android_keymint_downgrade` | `android_keymint` | KeyMint key attestation downgraded to SOFTWARE level / Unverified boot state |
+| `apple_img4_downgrade` | `apple_img4` | Img4 manifest with CPRO/CSEC false and zeroed boot nonce (permissive SEP policy) |
+| `ios_iboot_patch` | `ios_iboot` | iBoot with stripped version string and zeroed RSA signature region |
+| `ios_ane_inject` | `ios_ane_boot` | ANE firmware with development flag set and zeroed signature |
+| `ios_policy_tamper` | `ios_local_policy` | Local policy with zeroed nonce hash and next-stage hash |
+| `ios_ppl_bypass` | `ios_ppl` | APRR config zeroed (PPL disabled) with all-permissive PTE mask |
+| `ios_sep_forge` | `ios_secure_enclave` | SEP firmware image with debug flag enabled and zeroed signature |
+| `sep_downgrade` | `ios_sep_downgrade` | SEPOS personalization blob with zeroed SEPNonce — replayable APTicket downgrade |
+| `ktrr_disable` | `ios_ktrr` | CTRR_LOCK=0 — kernel-text lockdown defeated (kernel patch protection bypass) |
+| `amfi_bypass` | `ios_amfi` | AMFI/kernel code-signing disabled via boot-args (amfi_get_out_of_my_way=1) |
+| `trustcache_inject` | `ios_trustcache` | Ad-hoc ltrs trust-cache entry authorizing an attacker-controlled cdhash |
+| `boot_guard_km_forge` | `boot_guard_km` | Boot Guard Key Manifest with zeroed key hash and unenforced Boot Policy Manifest |
+| `msi_key_leak` | `msi_key_reuse` | Boot Guard KM carrying a reused vendor key-hash pattern (MSI key-leak class) |
+| `csme_update_tamper` | `csme_update` | CSME $CPD manifest with excessive entry count (600) |
+| `me_manufacturing_mode` | `me_manufacturing_mode` | Flash descriptor FITM manufacturing-mode bit set with $FPT layout |
+| `me_version_rollback` | `me_version_chain` | Paired $MN2 manifests with SVN 5 → 1 rollback |
+| `psp_debug_unlock` | `psp_secure_debug` | PSP DBUK debug-unlock token plus debug-policy directory entry |
+| `psp_trustlet_inject` | `psp_trustlets` | PSP directory with injected TOS trustlet entry |
+| `psp_version_rollback` | `psp_version_chain` | Paired PSP L2 directories with SVN 8 → 2 rollback |
+| `smu_firmware_tamper` | `smu_firmware` | SMU firmware with valid header but zeroed signature region |
+| `dell_bios_connect` | `dell_bios_connect` | Dell BIOSConnect DXE with PE/COFF header and TLS HTTPS call-home |
+| `dmar_neuter` | `iommu_dmar` | VT-d DMAR table stripped of DRHD units — pre-boot DMA exposure (Thunderspy) |
+| `dbx_rollback` | `secureboot_dbx` | Empty dbx EFI_SIGNATURE_LIST with stale authenticated timestamp (BlackLotus-class) |
+| `windows_bcd_tamper` | `windows_bootchain` | Windows BCD with nointegritychecks/testsigning enabled (unsigned driver loading) |
+| `network_boot_redirect` | `network_boot` | Embedded iPXE script chainloading an attacker-controlled HTTP image |
+| `bt_firmware_implant` | `bluetooth_firmware` | BT patchram Write_RAM/Launch_RAM controller code injection |
+| `wifi_firmware_implant` | `wifi_firmware` | WLAN FullMAC blob with appended NOP-sled code stub past the signed image |
+| `starlink_terminal_tamper` | `starlink_terminal` | LEO terminal bootloader signature bypass, traffic intercept, beam manipulation |
+| `ground_station_backdoor` | `satellite_ground_station` | Ground station telecommand injection and antenna tracking override |
+| `microcode_malicious` | `microcode_injection` | Malicious Intel microcode header at 48-byte-aligned offset |
+| `spectre_btb_inject` | `spectre_gadgets` | Cluster of unprotected indirect branches without LFENCE (BTB poisoning) |
+| `meltdown_pte_leak` | `spectre_gadgets` | CLFLUSH+RDTSC flush-reload gadget sequences (Meltdown/Flush+Reload) |
+| `thermal_rapl_exfil` | `thermal_covert` | Dense RAPL MSR write cluster (power/thermal covert channel) |
+| `clkscrew_voltage` | `voltage_glitch` | ARM PMIC I2C voltage-regulator manipulation (CLKscrew DVFS attack) |
+| `plundervolt_sgx` | `voltage_glitch` | OC_MAILBOX voltage offset WRMSR adjacent to ENCLS SGX instructions |
+| `jtag_dci_unlock` | `debug_interface` | IA32_DEBUG_INTERFACE MSR write enabling DCI debug port |
+| `rowhammer_trr_bypass` | `rowhammer` | Paired CLFLUSH hammer pattern with backward jump (TRR bypass) |
 
 **Validation loop:** `generate payload` → `scan with detector` → `assert finding raised` → measure TPR/FPR
 
@@ -405,7 +455,7 @@ barzakh/
 │   ├── USECASES.md                 # Offense & defense technique catalog
 │   └── LAB_TESTING.md             # Real hardware lab testing guide
 ├── src/
-│   ├── BootkitPkg/                 # Offense emulation (31 C modules)
+│   ├── BootkitPkg/                 # Offense emulation (21 EDK II modules)
 │   │   ├── DxeInject/              # DXE injection + kill-switches (7 files)
 │   │   ├── ExitBootHook/           # ExitBootServices + MSR + memory (4 files)
 │   │   ├── SmmPersistence/         # SMM handler persistence

@@ -539,7 +539,7 @@ build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc \
     -D BARZAKH_FUNCTIONAL=1
 ```
 
-The functional define can also be uncommented in the DSC `[BuildOptions]` section, but the command-line form is preferred so published builds never carry it.
+The command-line define is translated into the compiler flag by an `!ifdef BARZAKH_FUNCTIONAL` block in each DSC's `[BuildOptions]` section, so published (default) builds never carry it.
 
 #### Lab Verification Procedure
 
