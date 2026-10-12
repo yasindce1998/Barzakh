@@ -37,14 +37,16 @@ impl Payload for NvramCapsulePayload {
         data[offset + 11] = 0x00;
 
         // At offset 0x100: EFI Capsule Header
-        // GUID: {3B6686BD-0D76-4030-B70E-B5519E2FC5A0}
+        // GUID: EFI_FIRMWARE_MANAGEMENT_CAPSULE_ID_GUID
+        // {6B0582B9-3EE2-46CE-9903-D9A7B1B78600}
+        // (the detector's forgery check keys on this GUID)
         let offset = 0x100;
         let capsule_guid: [u8; 16] = [
-            0xBD, 0x86, 0x66, 0x3B, // Data1 LE
-            0x76, 0x0D, // Data2 LE
-            0x30, 0x40, // Data3 LE
-            0xB7, 0x0E, // Data4[0..2]
-            0xB5, 0x51, 0x9E, 0x2F, 0xC5, 0xA0, // Data4[2..8]
+            0xB9, 0x82, 0x05, 0x6B, // Data1 LE
+            0xE2, 0x3E, // Data2 LE
+            0xCE, 0x46, // Data3 LE
+            0x99, 0x03, // Data4[0..2]
+            0xD9, 0xA7, 0xB1, 0xB7, 0x86, 0x00, // Data4[2..8]
         ];
         data[offset..offset + 16].copy_from_slice(&capsule_guid);
         // HeaderSize = 0x1C (4 bytes LE)

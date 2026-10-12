@@ -31,28 +31,25 @@ impl Payload for AsusNvramRedirectPayload {
         let var_attrs: u32 = 0x00000007; // NV + BS + RT
         data[nvram_offset..nvram_offset + 4].copy_from_slice(&var_attrs.to_le_bytes());
 
-        // EZ Flash update URL variable name (Unicode UTF-16LE)
+        // EZ Flash update URL variable name (ASCII — matches the detector's
+        // search pattern)
         let var_name_offset = 0x110;
-        let var_name = "EzFlashUpdateUrl";
-        for (i, c) in var_name.encode_utf16().enumerate() {
-            data[var_name_offset + i * 2..var_name_offset + i * 2 + 2]
-                .copy_from_slice(&c.to_le_bytes());
-        }
+        let var_name = b"EzFlashUpdateUrl";
+        data[var_name_offset..var_name_offset + var_name.len()].copy_from_slice(var_name);
 
         // Tampered URL value pointing to attacker-controlled server
         let value_offset = 0x200;
         let malicious_url = b"http://evil-fw-server.net/asus/bios.cap";
         data[value_offset..value_offset + malicious_url.len()].copy_from_slice(malicious_url);
 
-        // ASUS capsule signature verification bypass variable
+        // ASUS capsule signature verification bypass variable (ASCII —
+        // matches the detector's search pattern)
         let bypass_offset = 0x400;
-        let bypass_var = "EzFlashSkipVerify";
-        for (i, c) in bypass_var.encode_utf16().enumerate() {
-            data[bypass_offset + i * 2..bypass_offset + i * 2 + 2]
-                .copy_from_slice(&c.to_le_bytes());
-        }
-        // Value = 1 (skip signature check)
-        data[bypass_offset + 0x40] = 0x01;
+        let bypass_var = b"EzFlashSkipVerify";
+        data[bypass_offset..bypass_offset + bypass_var.len()].copy_from_slice(bypass_var);
+        // Value = 1 (skip signature check) — the detector reads it at
+        // name_offset + len("EzFlashSkipVerify") + 0x30 = 0x440
+        data[bypass_offset + 0x30] = 0x01;
 
         // ASUS-specific capsule header magic
         let capsule_offset = 0x600;

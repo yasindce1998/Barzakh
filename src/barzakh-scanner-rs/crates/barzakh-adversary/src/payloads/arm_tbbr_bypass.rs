@@ -27,31 +27,26 @@ impl Payload for ArmTbbrBypassPayload {
         // Flags (0 = normal)
         data[8..16].copy_from_slice(&0u64.to_le_bytes());
 
-        // TOC entry 1: BL2 image UUID (with zeroed hash)
-        let bl2_uuid: [u8; 16] = [
-            0x5F, 0xF9, 0xEC, 0x0B, 0x4D, 0x22, 0x3E, 0x4D, 0xA5, 0x44, 0xC3, 0x9D, 0x81, 0xC7,
-            0x3F, 0x0A,
-        ];
+        // TOC entry 1: BL2 image (zeroed hash — TBBR bypass!)
+        // The detector matches the 8-byte UUID prefix and reads the 32-byte
+        // SHA-256 hash field at uuid+24, so the entry layout is:
+        // uuid(8) + offset(8) + size(8) + hash(32)
+        let bl2_uuid: [u8; 8] = [0x5F, 0xF9, 0xEC, 0x0B, 0x4D, 0x22, 0x3E, 0x4D];
         let entry1_offset = 16;
-        data[entry1_offset..entry1_offset + 16].copy_from_slice(&bl2_uuid);
+        data[entry1_offset..entry1_offset + 8].copy_from_slice(&bl2_uuid);
         // Offset to data
-        data[entry1_offset + 16..entry1_offset + 24].copy_from_slice(&0x1000u64.to_le_bytes());
+        data[entry1_offset + 8..entry1_offset + 16].copy_from_slice(&0x1000u64.to_le_bytes());
         // Size
-        data[entry1_offset + 24..entry1_offset + 32].copy_from_slice(&0x2000u64.to_le_bytes());
-        // Flags (0 = zeroed hash — TBBR bypass!)
-        data[entry1_offset + 32..entry1_offset + 40].copy_from_slice(&0u64.to_le_bytes());
+        data[entry1_offset + 16..entry1_offset + 24].copy_from_slice(&0x2000u64.to_le_bytes());
+        // Hash: 32 zero bytes (should hold the SHA-256 measurement)
 
-        // TOC entry 2: BL31 UUID (also zeroed hash)
-        let bl31_uuid: [u8; 16] = [
-            0x47, 0xD4, 0x08, 0x6D, 0x4C, 0xFE, 0x98, 0x46, 0x9B, 0x95, 0x29, 0x50, 0xCB, 0xBD,
-            0x5A, 0x00,
-        ];
-        let entry2_offset = entry1_offset + 40;
-        data[entry2_offset..entry2_offset + 16].copy_from_slice(&bl31_uuid);
-        data[entry2_offset + 16..entry2_offset + 24].copy_from_slice(&0x3000u64.to_le_bytes());
-        data[entry2_offset + 24..entry2_offset + 32].copy_from_slice(&0x1000u64.to_le_bytes());
-        // Zeroed hash flags
-        data[entry2_offset + 32..entry2_offset + 40].copy_from_slice(&0u64.to_le_bytes());
+        // TOC entry 2: BL31 image (also zeroed hash)
+        let bl31_uuid: [u8; 8] = [0x63, 0xB4, 0xC3, 0xE6, 0x26, 0x0E, 0x11, 0xE3];
+        let entry2_offset = entry1_offset + 48;
+        data[entry2_offset..entry2_offset + 8].copy_from_slice(&bl31_uuid);
+        data[entry2_offset + 8..entry2_offset + 16].copy_from_slice(&0x3000u64.to_le_bytes());
+        data[entry2_offset + 16..entry2_offset + 24].copy_from_slice(&0x1000u64.to_le_bytes());
+        // Hash: 32 zero bytes (should hold the SHA-256 measurement)
 
         // NV counter area — zeroed (anti-rollback protection disabled)
         let nv_counter_offset = 0x500;

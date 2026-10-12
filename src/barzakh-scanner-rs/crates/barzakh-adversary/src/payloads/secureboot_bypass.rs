@@ -29,8 +29,15 @@ impl Payload for SecurebootBypassPayload {
             0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C, // Data4[2..8]
         ];
         data[offset..offset + 16].copy_from_slice(&secureboot_guid);
+        // Variable name "SecureBoot" in UCS-2 (what the detector looks for
+        // after the GUID before reading the value byte)
+        let secureboot_ucs2: [u8; 22] = [
+            0x53, 0x00, 0x65, 0x00, 0x63, 0x00, 0x75, 0x00, 0x72, 0x00, 0x65, 0x00, 0x42, 0x00,
+            0x6F, 0x00, 0x6F, 0x00, 0x74, 0x00, 0x00, 0x00,
+        ];
+        data[offset + 16..offset + 38].copy_from_slice(&secureboot_ucs2);
         // SecureBoot value = 0x00 (DISABLED)
-        data[offset + 16] = 0x00;
+        data[offset + 38] = 0x00;
 
         // At offset 0x100: EFI_SIGNATURE_LIST header
         // SignatureType GUID for X509: {a5c059a1-94e4-4aa7-87b5-ab155c2bf072}

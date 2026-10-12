@@ -128,6 +128,50 @@ impl S3BootscriptDetector {
         findings
     }
 
+    /// Heuristic gate: does this data contain a plausible boot script table?
+    /// A real S3 boot script is a sequence of entries with valid opcodes and
+    /// sane lengths (each entry advances the parse). Require a run of at
+    /// least 3 such entries somewhere in the data before the integrity
+    /// walk runs, so zero-filled or random data is not misread as a
+    /// corrupted table.
+    fn looks_like_bootscript(data: &[u8]) -> bool {
+        let valid_opcodes = [
+            S3_MEM_WRITE_OPCODE,
+            S3_IO_WRITE_OPCODE,
+            S3_PCI_WRITE_OPCODE,
+            S3_DISPATCH_OPCODE,
+        ];
+
+        for start in 0..data.len().saturating_sub(6) {
+            if !valid_opcodes.contains(&data[start]) {
+                continue;
+            }
+
+            // Walk up to 3 consecutive entries from this candidate start.
+            let mut i = start;
+            let mut run = 0;
+            while i + 2 < data.len() && run < 3 {
+                let opcode = data[i];
+                if !valid_opcodes.contains(&opcode) {
+                    break;
+                }
+                let length = data[i + 1] as usize;
+                // A real entry has a non-zero, sane length and fits in data.
+                if length == 0 || length > 4096 || i + length > data.len() {
+                    break;
+                }
+                run += 1;
+                i += length;
+            }
+
+            if run >= 3 {
+                return true;
+            }
+        }
+
+        false
+    }
+
     fn check_bootscript_integrity(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -139,6 +183,15 @@ impl S3BootscriptDetector {
             S3_PCI_WRITE_OPCODE,
             S3_DISPATCH_OPCODE,
         ];
+
+        // Require evidence of an actual boot script table before trusting
+        // the integrity walk: opcode 0x00 is MEM_WRITE and opcode 0x00 with
+        // length 0x00 occurs in any zero-filled region (e.g. erased flash),
+        // which produced false Medium findings on clean baselines. A real
+        // script contains multiple consecutive parseable entries.
+        if !Self::looks_like_bootscript(data) {
+            return findings;
+        }
 
         let mut i = 0;
         while i + 2 < data.len() {

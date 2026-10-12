@@ -23,13 +23,15 @@ impl Payload for IosIbootPatchPayload {
 
         // No version string (stripped) — triggers version-missing finding
 
-        // Signature region at +0x40: all zeros (unsigned)
-        // Already zeros
+        // Signature region at +0x40 (0x100 bytes, through +0x140):
+        // all zeros — the zeroed RSA signature is the Critical finding.
+        // Keep this whole range zeroed.
 
-        // NOP sled at code entrypoint (ARM64 NOP = 0xD503201F in LE = [1F, 20, 03, D5])
+        // NOP sled patch just past the signature region (ARM64 NOP =
+        // 0xD503201F, LE bytes [1F, 20, 03, D5]) — the patched code entry
         let nop: [u8; 4] = [0x1F, 0x20, 0x03, 0xD5];
         for i in 0..4 {
-            let off = 0x40 + i * 4;
+            let off = 0x140 + i * 4;
             data[off..off + 4].copy_from_slice(&nop);
         }
 

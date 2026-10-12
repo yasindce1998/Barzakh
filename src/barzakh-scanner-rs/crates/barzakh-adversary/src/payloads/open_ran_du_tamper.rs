@@ -18,20 +18,21 @@ impl Payload for OpenRanDuTamperPayload {
         let size = config.size.max(0x800);
         let mut data = vec![0u8; size];
 
-        // O-RAN DU marker
-        data[0..12].copy_from_slice(b"O-RAN_DU_FW\x00");
+        // O-RAN DU marker ("O-RAN.WG" — in the detector's marker list)
+        data[0..8].copy_from_slice(b"O-RAN.WG");
 
-        // Unauthorized xApp descriptor
+        // Unauthorized xApp descriptor (strings from the detector's list)
         let xapp_off = 0x80;
-        let xapp_str = b"xapp_id=com.unknown.exfil\nxapp_type=unauthorized\n";
+        let xapp_str = b"unauthorized_xapp xApp_exfil mirror_e2\n";
         let end = (xapp_off + xapp_str.len()).min(size);
         data[xapp_off..end].copy_from_slice(&xapp_str[..end - xapp_off]);
 
-        // Non-standard eCPRI message type (types > 15 are reserved/non-standard)
+        // Non-standard eCPRI message type — the detector looks for the
+        // reserved type 0xFF after the version byte
         let ecpri_off = 0x100;
-        // eCPRI header: version=1, msg_type=0xFE (non-standard), payload_size
+        // eCPRI header: version=1, msg_type=0xFF (reserved/non-standard), payload_size
         data[ecpri_off] = 0x10; // version 1, reserved=0
-        data[ecpri_off + 1] = 0xFE; // non-standard message type
+        data[ecpri_off + 1] = 0xFF; // reserved message type
         data[ecpri_off + 2] = 0x00;
         data[ecpri_off + 3] = 0x40; // payload size = 64
 

@@ -18,8 +18,13 @@ impl Payload for BasebandRtosHookPayload {
         let size = config.size.max(0x1000);
         let mut data = vec![0u8; size];
 
-        // ThreadX RTOS marker
-        data[0..16].copy_from_slice(b"ThreadX_BB_RTOS\x00");
+        // ARM interrupt vector table: first 32 bytes are branch entries.
+        // Entry 0 is a hooked far branch (B with target ~0x60008, well
+        // outside the normal vector range) jumping to the implant.
+        data[0..4].copy_from_slice(&[0x00, 0x80, 0x01, 0xEA]);
+
+        // ThreadX RTOS marker (after the vector table entries in use)
+        data[4..20].copy_from_slice(b"ThreadX_BB_RTOS\x00");
 
         // Interrupt Vector Table with hooked entry
         // IVT starts at 0x00 in ARM; place a hook that jumps to implant
@@ -32,7 +37,7 @@ impl Payload for BasebandRtosHookPayload {
 
         // Suspicious task name indicating implant
         let task_off = 0x300;
-        let task_str = b"tShellBackdoor\x00";
+        let task_str = b"hook_isr_task\x00";
         data[task_off..task_off + task_str.len()].copy_from_slice(task_str);
 
         // Implant code zone

@@ -18,18 +18,19 @@ impl Payload for SmallCellImplantPayload {
         let size = config.size.max(0x800);
         let mut data = vec![0u8; size];
 
-        // Femtocell marker
-        data[0..16].copy_from_slice(b"FEMTO_eNB_FW_v3\x00");
+        // Femtocell marker ("femtocell" — in the detector's marker list)
+        data[0..9].copy_from_slice(b"femtocell");
 
-        // IMSI catcher configuration
+        // IMSI catcher configuration (strings from the detector's list)
         let imsi_off = 0x80;
-        let imsi_str = b"imsi_collect=all\ncatch_mode=active\ntarget_plmn=00101\n";
+        let imsi_str = b"catch_imsi silent_sms target_plmn=00101\n";
         let end = (imsi_off + imsi_str.len()).min(size);
         data[imsi_off..end].copy_from_slice(&imsi_str[..end - imsi_off]);
 
-        // RAT downgrade configuration (force 5G/4G -> 2G)
+        // RAT downgrade configuration (force 5G/4G -> 2G) — strings from
+        // the detector's downgrade list
         let rat_off = 0x100;
-        let rat_str = b"force_rat=GSM\ndisable_4g=1\nreject_5g=1\n";
+        let rat_str = b"force_2g disable_lte reject_5g cipher_none\n";
         let end = (rat_off + rat_str.len()).min(size);
         data[rat_off..end].copy_from_slice(&rat_str[..end - rat_off]);
 

@@ -18,8 +18,8 @@ impl Payload for ImsFirmwareTamperPayload {
         let size = config.size.max(0x1000);
         let mut data = vec![0u8; size];
 
-        // IMS firmware marker
-        data[0..12].copy_from_slice(b"IMS_VoLTE_FW");
+        // IMS firmware marker ("IMS_SERVICE" — in the detector's marker list)
+        data[0..11].copy_from_slice(b"IMS_SERVICE");
 
         // AArch64 NOP sled (0xD503201F repeated) — implant landing zone
         let sled_start = 0x100;

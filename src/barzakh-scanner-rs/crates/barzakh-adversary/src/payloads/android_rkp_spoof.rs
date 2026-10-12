@@ -44,10 +44,14 @@ impl Payload for AndroidRkpSpoofPayload {
         // Security level field = 0 (SOFTWARE) instead of expected TEE/StrongBox
         data[csr_offset + 8] = 0x00;
 
-        // Factory test certificate bypass pattern
+        // Factory test certificate bypass pattern (the detector requires
+        // both "FactoryKeys" and "testcert" markers)
         let factory_offset = 0x300;
         let factory_marker = b"FactoryKeys";
         data[factory_offset..factory_offset + factory_marker.len()].copy_from_slice(factory_marker);
+        let testcert_marker = b"testcert";
+        let tc_offset = factory_offset + 20;
+        data[tc_offset..tc_offset + testcert_marker.len()].copy_from_slice(testcert_marker);
 
         // Provisioning status: mark as test/factory to bypass RKP validation
         data[factory_offset + 16] = 0x01; // test mode flag

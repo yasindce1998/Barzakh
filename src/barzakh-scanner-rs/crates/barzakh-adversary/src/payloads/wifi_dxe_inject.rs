@@ -25,10 +25,10 @@ impl Payload for WifiDxeInjectPayload {
         // Device ID: Intel CNVi WiFi 6E (0xA0F0)
         data[pci_offset + 2..pci_offset + 4].copy_from_slice(&0xA0F0u16.to_le_bytes());
 
-        // WiFi protocol GUID
+        // WiFi protocol GUID (matches the detector's WIFI_PROTOCOL_GUID)
         let wifi_guid: [u8; 16] = [
-            0xDA, 0xB4, 0xF4, 0x97, 0x7B, 0x60, 0xD4, 0x4B, 0xA0, 0x4A, 0x35, 0xE5, 0x5A, 0x13,
-            0xF3, 0x52,
+            0xDA, 0x23, 0xF0, 0x98, 0x62, 0x33, 0x4C, 0x47, 0xAC, 0xCD, 0x9F, 0x13, 0x5B, 0x65,
+            0x40, 0x66,
         ];
         let guid_offset = 0x100;
         data[guid_offset..guid_offset + 16].copy_from_slice(&wifi_guid);

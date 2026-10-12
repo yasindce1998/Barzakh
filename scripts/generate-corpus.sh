@@ -36,12 +36,11 @@ echo -e "${BOLD}=== Barzakh Synthetic Corpus Generator ===${NC}"
 echo "Output: $CORPUS_DIR"
 echo ""
 
-# Build the adversary binary if needed
+# Build the adversary binary (always: incremental, and skipping it
+# silently regenerates the corpus with a stale binary)
 ADVERSARY="$RUST_DIR/target/release/barzakh-adversary"
-if [[ ! -x "$ADVERSARY" ]]; then
-    echo -e "${CYAN}Building barzakh-adversary (release)...${NC}"
-    cargo build --release --manifest-path "$RUST_DIR/Cargo.toml" -p barzakh-cli
-fi
+echo -e "${CYAN}Building barzakh-adversary (release)...${NC}"
+cargo build --release --manifest-path "$RUST_DIR/Cargo.toml" -p barzakh-cli
 
 if [[ ! -x "$ADVERSARY" ]]; then
     echo -e "${RED}ERROR: barzakh-adversary binary not found at $ADVERSARY${NC}"

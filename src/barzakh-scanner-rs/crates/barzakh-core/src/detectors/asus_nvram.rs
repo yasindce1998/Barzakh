@@ -21,6 +21,61 @@ impl AsusNvramDetector {
         Self
     }
 
+    /// Extract the hostname of the first http(s):// URL in `region` and
+    /// check it is not an ASUS-owned domain. Substring-scanning the whole
+    /// region is wrong: a URL like http://evil-fw-server.net/asus/bios.cap
+    /// contains "asus" in the *path* and would slip past the check.
+    fn url_host_is_non_asus(region: &[u8]) -> bool {
+        let url_start = match region
+            .windows(7)
+            .position(|w| w == b"http://")
+            .or_else(|| region.windows(8).position(|w| w == b"https://"))
+        {
+            Some(p) => p,
+            None => return false,
+        };
+
+        let after_scheme = url_start
+            + if region[url_start..].starts_with(b"https://") {
+                8
+            } else {
+                7
+            };
+
+        // Host runs to the first '/', '?', or end of region.
+        let host_end = region[after_scheme..]
+            .iter()
+            .position(|&b| b == b'/' || b == b'?')
+            .map(|i| after_scheme + i)
+            .unwrap_or(region.len());
+        let host = &region[after_scheme..host_end];
+
+        if host.is_empty() {
+            return false;
+        }
+
+        // ASUS-owned domains (asus.com and regional variants like
+        // asus.com.tw, dlcdnnts.asus.com). Compare case-insensitively
+        // against the registrable domain: the label immediately before
+        // the TLD ("dlcdnnts.asus.com" -> "asus", "evil-fw-server.net"
+        // -> "evil-fw-server"), or the whole host if it has no dot.
+        let host_lower = host.to_ascii_lowercase();
+        let last_dot = host_lower.iter().rposition(|&b| b == b'.');
+        let registrable: &[u8] = match last_dot {
+            Some(tld_dot) => {
+                let before_tld = &host_lower[..tld_dot];
+                match before_tld.iter().rposition(|&b| b == b'.') {
+                    Some(dot) => &before_tld[dot + 1..],
+                    // "asus.com" -> "asus"; single label + TLD
+                    None => before_tld,
+                }
+            }
+            // Dotless host — treat the whole thing as the domain
+            None => &host_lower,
+        };
+        registrable != b"asus"
+    }
+
     fn check_nvram_url_redirect(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -32,10 +87,7 @@ impl AsusNvramDetector {
             let search_end = (pos + 512).min(data.len());
             let region = &data[search_start..search_end];
 
-            let has_http_url = region.windows(7).any(|w| w == b"http://");
-            let has_non_asus_domain = !region.windows(4).any(|w| w == b"asus");
-
-            if has_http_url && has_non_asus_domain {
+            if Self::url_host_is_non_asus(region) {
                 findings.push(
                     Finding::new(
                         "asus_nvram",
@@ -51,8 +103,7 @@ impl AsusNvramDetector {
                     .with_confidence(0.92)
                     .with_details(serde_json::json!({
                         "offset": format!("0x{:08X}", pos),
-                        "has_http_url": true,
-                        "non_asus_domain": true,
+                        "non_asus_host": true,
                         "technique": "NVRAM variable tampering for firmware update redirection",
                     }))
                     .with_recommendation(

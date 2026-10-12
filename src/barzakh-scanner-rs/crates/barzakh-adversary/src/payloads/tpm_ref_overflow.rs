@@ -23,8 +23,10 @@ impl Payload for TpmRefOverflowPayload {
         // Tag: TPM_ST_SESSIONS (0x8002)
         data[cmd_offset..cmd_offset + 2].copy_from_slice(&0x8002u16.to_be_bytes());
 
-        // Declared commandSize: large value exceeding actual buffer
-        let declared_size: u32 = 0x2000;
+        // Declared commandSize: far exceeds the actual buffer (the corpus
+        // runner generates 0x10000-byte files) so the detector's
+        // command_size > remaining + 64 check fires
+        let declared_size: u32 = 0x20000;
         data[cmd_offset + 2..cmd_offset + 6].copy_from_slice(&declared_size.to_be_bytes());
 
         // Command code: TPM2_CC_CertifyCreation (0x0000_014A)

