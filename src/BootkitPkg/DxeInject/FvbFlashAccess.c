@@ -89,7 +89,7 @@ FvbOffsetToLba (
   EFI_STATUS  Status;
   EFI_LBA     CandidateLba;
   UINTN       BlockSize;
-  UINT32      NumberOfBlocks;
+  UINTN       NumberOfBlocks;
   UINT64      Remaining;
   UINT64      RunBytes;
 
