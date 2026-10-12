@@ -25,16 +25,16 @@ impl Payload for S3BootscriptInjectPayload {
         // MEM_WRITE opcode (0x00), length 0x10
         data[offset] = 0x00; // MEM_WRITE
         data[offset + 1] = 0x10; // length
-        // IO_WRITE opcode (0x01) at offset+0x10, length 0x08
+                                 // IO_WRITE opcode (0x01) at offset+0x10, length 0x08
         let io_offset = offset + 0x10;
         data[io_offset] = 0x01; // IO_WRITE
         data[io_offset + 1] = 0x08; // length
-        // DISPATCH opcode (0x03) at offset+0x18, length 0x0A (10):
-        // opcode(1) + length(1) + entry_point(8)
+                                    // DISPATCH opcode (0x03) at offset+0x18, length 0x0A (10):
+                                    // opcode(1) + length(1) + entry_point(8)
         let dispatch_offset = offset + 0x18;
         data[dispatch_offset] = 0x03; // DISPATCH
         data[dispatch_offset + 1] = 0x0A; // length
-        // Entry point address (suspicious — points outside firmware)
+                                          // Entry point address (suspicious — points outside firmware)
         let entry_point: u64 = 0x41414141_DEADBEEF;
         data[dispatch_offset + 2..dispatch_offset + 10].copy_from_slice(&entry_point.to_le_bytes());
 

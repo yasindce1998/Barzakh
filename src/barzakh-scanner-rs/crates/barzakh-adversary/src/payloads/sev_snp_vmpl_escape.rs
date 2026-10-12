@@ -26,7 +26,7 @@ impl Payload for SevSnpVmplEscapePayload {
         data[vmsa_offset..vmsa_offset + vmsa_marker.len()].copy_from_slice(&vmsa_marker);
         // VMPL field: 0 (VMPL0 = hypervisor privilege)
         data[vmsa_offset + 8] = 0x00; // VMPL0
-        // Expected VMPL: 2 (guest) — the confusion pair the detector matches
+                                      // Expected VMPL: 2 (guest) — the confusion pair the detector matches
         data[vmsa_offset + 9] = 0x02;
 
         // SEV_FEATURES indicating VMPL2+ permissions (VmplSSS bit set)

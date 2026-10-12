@@ -57,7 +57,8 @@ impl Payload for CxlDmaAttackPayload {
         let mem_range_offset = ext_cap_offset + 16;
         // DMA range base = 0x000A0000 (legacy VGA area / SMM overlap)
         data[mem_range_offset..mem_range_offset + 4].copy_from_slice(&0x000A0000u32.to_le_bytes());
-        data[mem_range_offset + 4..mem_range_offset + 8].copy_from_slice(&0x00000000u32.to_le_bytes());
+        data[mem_range_offset + 4..mem_range_offset + 8]
+            .copy_from_slice(&0x00000000u32.to_le_bytes());
         // DMA range size = 0x60000 (covers through 0x000FFFFF)
         data[mem_range_offset + 8..mem_range_offset + 12]
             .copy_from_slice(&0x00060000u32.to_le_bytes());
@@ -74,7 +75,7 @@ impl Payload for CxlDmaAttackPayload {
         // DVSEC with non-standard vendor
         data[ext_cap2_offset + 4] = 0xFF;
         data[ext_cap2_offset + 5] = 0xFF; // Vendor 0xFFFF (invalid)
-        // Revision (4 bits) << 12 | Length (12 bits): Revision 2, Length 0xFF
+                                          // Revision (4 bits) << 12 | Length (12 bits): Revision 2, Length 0xFF
         let rev_len2: u16 = (2 << 12) | 0xFF;
         data[ext_cap2_offset + 6..ext_cap2_offset + 8].copy_from_slice(&rev_len2.to_le_bytes());
         // DVSEC ID = 0

@@ -23,8 +23,8 @@ impl Payload for GpuVbiosImplantPayload {
         data[1] = 0xAA;
         // ROM size in 512-byte blocks
         data[2] = 0x40; // 32KB
-        // Initialization entry point (offset 0x03, u16 LE) points beyond the
-        // declared ROM size — the tampered init vector of the implant
+                        // Initialization entry point (offset 0x03, u16 LE) points beyond the
+                        // declared ROM size — the tampered init vector of the implant
         data[3..5].copy_from_slice(&0x9000u16.to_le_bytes());
 
         // PCIR data structure pointer at offset 0x18

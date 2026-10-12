@@ -88,8 +88,11 @@ impl ArmTrustzoneDetector {
                 if i >= 16 {
                     for back in 1..=4usize {
                         let instr_start = i - back * 4;
-                        let prev_instr =
-                            u32::from_le_bytes(data[instr_start..instr_start + 4].try_into().unwrap_or([0; 4]));
+                        let prev_instr = u32::from_le_bytes(
+                            data[instr_start..instr_start + 4]
+                                .try_into()
+                                .unwrap_or([0; 4]),
+                        );
                         if (prev_instr & 0xFF80_0000) == 0xD280_0000 {
                             let imm16 = (prev_instr >> 5) & 0xFFFF;
                             let service_id = imm16 >> 8;
