@@ -9,7 +9,7 @@ FROM ubuntu:22.04
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
-ENV EDK2_VERSION=edk2-stable202311
+ENV EDK2_VERSION=edk2-stable202405
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     swtpm \
     swtpm-tools \
     tpm2-tools \
+    ovmf \
     # Development tools
     vim \
     less \

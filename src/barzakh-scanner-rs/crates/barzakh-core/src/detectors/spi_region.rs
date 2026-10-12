@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::detector::{Detector, DetectorError, Finding, Severity};
 
 const FLASH_DESCRIPTOR_SIG: u32 = 0x0FF0A55A;
+const FLVALSIG_OFFSET: usize = 0x10;
 const FLREG_BASE_OFFSET: usize = 0x54;
 const FLMSTR1_OFFSET: usize = 0x80;
 
@@ -19,6 +20,17 @@ impl SpiRegionDetector {
         Self
     }
 
+    /// Locate the Intel flash descriptor and return the offset of its base
+    /// (offset 0 of the descriptor region, i.e. FLVALSIG position - 0x10).
+    /// Register constants (FLREG0 at 0x54, FLMSTR1 at 0x80) are absolute
+    /// offsets from the descriptor base, not from the signature.
+    fn find_descriptor_base(data: &[u8]) -> Option<usize> {
+        let sig_pos = data.windows(4).position(|w| {
+            u32::from_le_bytes(w.try_into().unwrap_or([0; 4])) == FLASH_DESCRIPTOR_SIG
+        })?;
+        Some(sig_pos.saturating_sub(FLVALSIG_OFFSET))
+    }
+
     fn check_region_descriptor(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -27,11 +39,7 @@ impl SpiRegionDetector {
             return findings;
         }
 
-        let sig_pos = data.windows(4).position(|w| {
-            u32::from_le_bytes(w.try_into().unwrap_or([0; 4])) == FLASH_DESCRIPTOR_SIG
-        });
-
-        let base_offset = match sig_pos {
+        let base_offset = match Self::find_descriptor_base(data) {
             Some(pos) => pos,
             None => return findings,
         };
@@ -88,17 +96,11 @@ impl SpiRegionDetector {
     fn check_master_access_bits(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        // Find flash descriptor first
-        let sig_pos = data.windows(4).position(|w| {
-            u32::from_le_bytes(w.try_into().unwrap_or([0; 4])) == FLASH_DESCRIPTOR_SIG
-        });
-
-        let base_offset = match sig_pos {
+        // Check FLMSTR1 (BIOS master) at offset 0x80 from descriptor base
+        let base_offset = match Self::find_descriptor_base(data) {
             Some(pos) => pos,
             None => return findings,
         };
-
-        // Check FLMSTR1 (BIOS master) at offset 0x80 from descriptor base
         let flmstr1_offset = base_offset + FLMSTR1_OFFSET;
         if flmstr1_offset + 4 > data.len() {
             return findings;
@@ -144,11 +146,7 @@ impl SpiRegionDetector {
         let mut findings = Vec::new();
 
         // Find flash descriptor
-        let sig_pos = data.windows(4).position(|w| {
-            u32::from_le_bytes(w.try_into().unwrap_or([0; 4])) == FLASH_DESCRIPTOR_SIG
-        });
-
-        let base_offset = match sig_pos {
+        let base_offset = match Self::find_descriptor_base(data) {
             Some(pos) => pos,
             None => return findings,
         };

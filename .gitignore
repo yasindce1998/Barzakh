@@ -195,6 +195,9 @@ ehthumbs_vista.db
 .directory
 .Trash-*
 
+# C test binaries (built from source, e.g. tests/killswitch/Makefile)
+test_killswitch
+
 # ============================================
 # IMPORTANT NOTES
 # ============================================

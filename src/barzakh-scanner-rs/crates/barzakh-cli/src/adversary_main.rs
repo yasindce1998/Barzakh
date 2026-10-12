@@ -55,6 +55,9 @@ enum Commands {
         #[command(subcommand)]
         command: EspCommands,
     },
+
+    /// Inject a single payload into an existing firmware image
+    InjectSingle(InjectSingleArgs),
 }
 
 // ─── Generate ───────────────────────────────────────────────────────────────
@@ -168,6 +171,31 @@ struct EspBuildArgs {
     size: u32,
 }
 
+// ─── InjectSingle ──────────────────────────────────────────────────────────
+
+#[derive(Parser)]
+struct InjectSingleArgs {
+    /// Input firmware image to inject into
+    #[arg(long)]
+    input: PathBuf,
+
+    /// Output path for the modified firmware image
+    #[arg(long)]
+    output: PathBuf,
+
+    /// Payload name to inject (use 'list' to see available)
+    #[arg(long)]
+    payload: String,
+
+    /// Target architecture
+    #[arg(long, value_enum, default_value = "x86-64")]
+    arch: ArchArg,
+
+    /// Payload generation size in bytes (defaults to input file size)
+    #[arg(long)]
+    size: Option<usize>,
+}
+
 // ─── Shared types ───────────────────────────────────────────────────────────
 
 #[derive(Clone, ValueEnum)]
@@ -245,6 +273,7 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Esp { command } => match command {
             EspCommands::Build(args) => cmd_esp_build(args),
         },
+        Commands::InjectSingle(args) => cmd_inject_single(args),
     }
 }
 
@@ -389,6 +418,18 @@ fn cmd_validate(args: ValidateArgs) -> Result<()> {
             .cyan()
             .bold()
     );
+    println!(
+        "  FPR:            {}",
+        format!("{:.2}%", report.false_positive_rate * 100.0)
+            .cyan()
+            .bold()
+    );
+    println!(
+        "  Clean scanned:  {} ({} FP, {} TN)",
+        report.false_positives + report.true_negatives,
+        report.false_positives,
+        report.true_negatives,
+    );
 
     Ok(())
 }
@@ -443,6 +484,69 @@ fn cmd_esp_build(args: EspBuildArgs) -> Result<()> {
         args.payload.display(),
         payload_data.len()
     );
+
+    Ok(())
+}
+
+fn cmd_inject_single(args: InjectSingleArgs) -> Result<()> {
+    let payloads = create_all_payloads();
+    let payload = payloads
+        .iter()
+        .find(|p| p.name() == args.payload)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Unknown payload '{}'. Use 'barzakh-adversary list' to see available payloads.",
+                args.payload
+            )
+        })?;
+
+    // Read the original firmware image
+    let input_data = std::fs::read(&args.input)?;
+
+    let size = args.size.unwrap_or(input_data.len().max(0x10000));
+    let config = PayloadConfig {
+        arch: args.arch.into(),
+        size,
+    };
+
+    println!(
+        "{} Generating payload: {}",
+        "▶".cyan().bold(),
+        payload.name().yellow()
+    );
+
+    let payload_data = payload.generate(&config)?;
+
+    // Overlay: write payload bytes at offset 0, keep rest of input intact.
+    // Output length = max(input length, payload length).
+    let output_len = input_data.len().max(payload_data.len());
+    let mut output_data = vec![0u8; output_len];
+
+    // Copy input as the base
+    output_data[..input_data.len()].copy_from_slice(&input_data);
+    // Overlay payload at offset 0
+    output_data[..payload_data.len()].copy_from_slice(&payload_data);
+
+    std::fs::write(&args.output, &output_data)?;
+
+    println!(
+        "{} Injected '{}' ({} bytes) into {} ({} bytes) → {} ({} bytes)",
+        "✓".green().bold(),
+        payload.name().yellow(),
+        payload_data.len(),
+        args.input.display(),
+        input_data.len(),
+        args.output.display(),
+        output_data.len(),
+    );
+
+    let expected = payload.expected_detections();
+    if !expected.is_empty() {
+        println!("  Expected detections:");
+        for exp in &expected {
+            println!("    - {} (>= {:?})", exp.detector, exp.min_severity);
+        }
+    }
 
     Ok(())
 }

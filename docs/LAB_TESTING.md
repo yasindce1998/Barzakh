@@ -656,7 +656,7 @@ cp original_firmware.bin test_phase3.bin
 cargo run -p barzakh-adversary -- inject-single \
     --input original_firmware.bin \
     --output test_phase3.bin \
-    --payload acpi_checksum
+    --payload acpi_backdoor
 
 # 2. Flash the modified image via external programmer
 flashrom -p ch341a_spi -w test_phase3.bin
@@ -1094,7 +1094,7 @@ sudo python chipsec_util.py msr 0x13A  # IA32_FEATURE_CONTROL (Boot Guard)
 ### barzakh-adversary — Red-Team Payload Generator
 
 ```bash
-# List all 64 available payloads
+# List all available payloads
 ./target/release/barzakh-adversary list
 
 # Generate payloads for your target architecture

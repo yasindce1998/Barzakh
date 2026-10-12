@@ -1,0 +1,2 @@
+# Ignore generated corpus binaries (regenerate via scripts/generate-corpus.sh)
+*.bin

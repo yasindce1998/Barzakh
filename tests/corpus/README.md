@@ -50,17 +50,27 @@ Each sample includes a JSON metadata file with:
 
 ## Usage
 
+### Generating the Synthetic Corpus
+
+```bash
+# Generate all malicious + clean pairs using the Rust adversary binary
+scripts/generate-corpus.sh
+
+# Or with immediate validation
+scripts/generate-corpus.sh --validate
+```
+
 ### Running Validation
 
 ```bash
-# Validate all samples
-python3 tests/corpus_validation.py --all
+# Validate all synthetic samples (TPR + FPR)
+barzakh-adversary validate --corpus tests/corpus/synthetic/
 
-# Validate specific category
-python3 tests/corpus_validation.py --category malicious
+# Validate using the scanner's full confusion-matrix mode
+barzakh-scanner validate --corpus tests/corpus/synthetic/
 
-# Validate single sample
-python3 tests/corpus_validation.py --sample blacklotus/sample1.bin
+# Validate E2E scan results from CI
+python3 tests/validate_ci_results.py <scan_results.json>
 ```
 
 ### Adding New Samples
@@ -75,7 +85,7 @@ cp new_sample.bin corpus/malicious/newsample/
 cp metadata.json corpus/malicious/newsample/
 
 # Validate
-python3 tests/corpus_validation.py --sample malicious/newsample/new_sample.bin
+barzakh-scanner scan --target corpus/malicious/newsample/new_sample.bin
 ```
 
 ## Acquisition Guidelines
@@ -106,19 +116,23 @@ Sources:
 
 ## Synthetic Test Generation
 
-For CI/CD and automated testing, use synthetic samples:
+For CI/CD and automated testing, generate synthetic samples using the Rust adversary binary:
 
 ```bash
-# Generate synthetic bootkit
-python3 tests/generate_synthetic_bootkit.py \
-  --hooks ExitBootServices,LoadImage \
-  --pcr-mods 0,7 \
-  --output corpus/synthetic/test_bootkit.bin
+# Generate a full synthetic corpus (malicious + clean pairs for all 116 payloads)
+scripts/generate-corpus.sh
 
-# Generate clean firmware
-python3 tests/generate_synthetic_firmware.py \
-  --vendor dell \
-  --output corpus/synthetic/clean_firmware.bin
+# Or use the adversary binary directly
+barzakh-adversary corpus --output tests/corpus/synthetic/
+
+# Generate a single payload for targeted testing
+barzakh-adversary generate --payload acpi_backdoor --output corpus/synthetic/acpi_test.bin
+
+# Inject a payload into an existing firmware image (Phase 3 lab testing)
+barzakh-adversary inject-single \
+    --input original_firmware.bin \
+    --output test_phase3.bin \
+    --payload acpi_backdoor
 ```
 
 ## Validation Metrics

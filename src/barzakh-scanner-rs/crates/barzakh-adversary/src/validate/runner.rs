@@ -23,15 +23,31 @@ pub struct ValidationReport {
     pub detected_count: usize,
     pub missed_count: usize,
     pub true_positive_rate: f64,
+    pub false_positives: usize,
+    pub true_negatives: usize,
+    pub false_positive_rate: f64,
 }
 
 impl ValidationReport {
     pub fn from_results(results: Vec<ValidationResult>) -> Self {
+        Self::from_results_with_fp(results, 0, 0)
+    }
+
+    pub fn from_results_with_fp(
+        results: Vec<ValidationResult>,
+        false_positives: usize,
+        true_negatives: usize,
+    ) -> Self {
         let total_payloads = results.len();
         let detected_count = results.iter().filter(|r| r.detected).count();
         let missed_count = total_payloads - detected_count;
         let true_positive_rate = if total_payloads > 0 {
             detected_count as f64 / total_payloads as f64
+        } else {
+            0.0
+        };
+        let false_positive_rate = if false_positives + true_negatives > 0 {
+            false_positives as f64 / (false_positives + true_negatives) as f64
         } else {
             0.0
         };
@@ -42,6 +58,9 @@ impl ValidationReport {
             detected_count,
             missed_count,
             true_positive_rate,
+            false_positives,
+            true_negatives,
+            false_positive_rate,
         }
     }
 }
@@ -88,5 +107,37 @@ pub fn validate_all(payloads: &[Box<dyn Payload>], dump_dir: &Path) -> Result<Va
         }
     }
 
-    Ok(ValidationReport::from_results(results))
+    // Scan clean_*.bin files to compute false positive rate
+    let mut false_positives = 0usize;
+    let mut true_negatives = 0usize;
+
+    if let Ok(entries) = std::fs::read_dir(dump_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let file_name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if !file_name.starts_with("clean_") {
+                continue;
+            }
+
+            let mut scanner = BarzakhScanner::new(None);
+            let scan_result = scanner.scan(&path, None);
+            if scan_result.summary.bootkit_detected {
+                false_positives += 1;
+            } else {
+                true_negatives += 1;
+            }
+        }
+    }
+
+    Ok(ValidationReport::from_results_with_fp(
+        results,
+        false_positives,
+        true_negatives,
+    ))
 }
