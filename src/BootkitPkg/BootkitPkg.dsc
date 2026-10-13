@@ -117,6 +117,12 @@
   BootkitPkg/FtpmCommandForge/FtpmCommandForge.inf
   BootkitPkg/MeDmaAttack/MeDmaAttack.inf
 
+  #
+  # Embedded Platform (Automotive / IoT) Emulation Modules
+  #
+  BootkitPkg/AutomotiveCanInject/AutomotiveCanInject.inf
+  BootkitPkg/IotRtosImplant/IotRtosImplant.inf
+
 [BuildOptions]
   # Enable security features
   GCC:*_*_*_CC_FLAGS = -DBARZAKH_RESEARCH=1

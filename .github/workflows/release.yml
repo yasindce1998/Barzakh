@@ -63,46 +63,54 @@ jobs:
         working-directory: src/barzakh-scanner-rs
         run: cross build --release --target ${{ matrix.target }}
 
-      - name: Determine platform suffix
-        id: suffix
-        shell: bash
-        run: |
-          case "${{ matrix.target }}" in
-            x86_64-unknown-linux-gnu)   echo "platform=linux-x86_64" >> "$GITHUB_OUTPUT" ;;
-            aarch64-unknown-linux-gnu)  echo "platform=linux-aarch64" >> "$GITHUB_OUTPUT" ;;
-            x86_64-apple-darwin)        echo "platform=macos-x86_64" >> "$GITHUB_OUTPUT" ;;
-            aarch64-apple-darwin)       echo "platform=macos-aarch64" >> "$GITHUB_OUTPUT" ;;
-            x86_64-pc-windows-msvc)     echo "platform=windows-x86_64" >> "$GITHUB_OUTPUT" ;;
-          esac
-
       - name: Rename binaries (Unix)
         if: runner.os != 'Windows'
         run: |
           cp src/barzakh-scanner-rs/target/${{ matrix.target }}/release/barzakh-scanner \
-             barzakh-scanner-${{ steps.suffix.outputs.platform }}
+             barzakh-scanner-${{ matrix.target }}
           cp src/barzakh-scanner-rs/target/${{ matrix.target }}/release/barzakh-adversary \
-             barzakh-adversary-${{ steps.suffix.outputs.platform }}
+             barzakh-adversary-${{ matrix.target }}
+          cp src/barzakh-scanner-rs/target/${{ matrix.target }}/release/barzakh-server \
+             barzakh-server-${{ matrix.target }}
+          cp src/barzakh-scanner-rs/target/${{ matrix.target }}/release/barzakh-agent \
+             barzakh-agent-${{ matrix.target }}
 
       - name: Rename binaries (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Copy-Item "src\barzakh-scanner-rs\target\${{ matrix.target }}\release\barzakh-scanner.exe" `
-                    "barzakh-scanner-${{ steps.suffix.outputs.platform }}.exe"
+                    "barzakh-scanner-${{ matrix.target }}.exe"
           Copy-Item "src\barzakh-scanner-rs\target\${{ matrix.target }}\release\barzakh-adversary.exe" `
-                    "barzakh-adversary-${{ steps.suffix.outputs.platform }}.exe"
+                    "barzakh-adversary-${{ matrix.target }}.exe"
+          Copy-Item "src\barzakh-scanner-rs\target\${{ matrix.target }}\release\barzakh-server.exe" `
+                    "barzakh-server-${{ matrix.target }}.exe"
+          Copy-Item "src\barzakh-scanner-rs\target\${{ matrix.target }}\release\barzakh-agent.exe" `
+                    "barzakh-agent-${{ matrix.target }}.exe"
 
       - name: Upload scanner artifact
         uses: actions/upload-artifact@v4
         with:
-          name: barzakh-scanner-${{ steps.suffix.outputs.platform }}${{ matrix.ext }}
-          path: barzakh-scanner-${{ steps.suffix.outputs.platform }}${{ matrix.ext }}
+          name: barzakh-scanner-${{ matrix.target }}${{ matrix.ext }}
+          path: barzakh-scanner-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload adversary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: barzakh-adversary-${{ steps.suffix.outputs.platform }}${{ matrix.ext }}
-          path: barzakh-adversary-${{ steps.suffix.outputs.platform }}${{ matrix.ext }}
+          name: barzakh-adversary-${{ matrix.target }}${{ matrix.ext }}
+          path: barzakh-adversary-${{ matrix.target }}${{ matrix.ext }}
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: barzakh-server-${{ matrix.target }}${{ matrix.ext }}
+          path: barzakh-server-${{ matrix.target }}${{ matrix.ext }}
+
+      - name: Upload agent artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: barzakh-agent-${{ matrix.target }}${{ matrix.ext }}
+          path: barzakh-agent-${{ matrix.target }}${{ matrix.ext }}
 
   release:
     name: Create GitHub Release

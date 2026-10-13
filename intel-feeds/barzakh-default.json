@@ -1,0 +1,289 @@
+{
+  "name": "barzakh-default",
+  "version": 1,
+  "updated": "2026-10-01",
+  "iocs": [
+    {
+      "pattern": "hex:42 6C 61 63 6B 4C 6F 74 75 73",
+      "family": "BlackLotus",
+      "cve": "CVE-2023-24932",
+      "description": "BlackLotus bootkit marker string"
+    },
+    {
+      "pattern": "hex:4D 00 6F 00 6B 00 4C 00 69 00 73 00 74 00",
+      "family": "BlackLotus",
+      "cve": "CVE-2023-24932",
+      "description": "UTF-16LE MokList variable name (MOK abuse)"
+    },
+    {
+      "pattern": "hex:42 63 64 53 74 6F 72 65",
+      "family": "BlackLotus",
+      "cve": "CVE-2023-24932",
+      "description": "BcdStore marker used by Secure Boot bypass stages"
+    },
+    {
+      "pattern": "\\EFI\\Microsoft\\Boot\\shimx64.efi",
+      "family": "BlackLotus",
+      "cve": null,
+      "description": "Shim path referenced by bootkit persistence stages"
+    },
+    {
+      "pattern": "\\EFI\\hidden\\shimx64.efi",
+      "family": "BlackLotus",
+      "cve": null,
+      "description": "Hidden-ESP shim path (copied loader persistence)"
+    },
+    {
+      "pattern": "hex:45 53 50 65 63 74 65 72",
+      "family": "ESPecter",
+      "cve": null,
+      "description": "ESPecter bootkit marker string"
+    },
+    {
+      "pattern": "hex:46 69 6E 53 70 79",
+      "family": "FinSpy",
+      "cve": null,
+      "description": "FinSpy firmware implant marker string"
+    },
+    {
+      "pattern": "hex:4D 6F 73 61 69 63 52 65 67 72 65 73 73 6F 72",
+      "family": "MosaicRegressor",
+      "cve": null,
+      "description": "MosaicRegressor UEFI implant marker string"
+    },
+    {
+      "pattern": "hex:43 6F 73 6D 69 63 53 74 72 61 6E 64",
+      "family": "CosmicStrand",
+      "cve": null,
+      "description": "CosmicStrand bootkit marker string"
+    },
+    {
+      "pattern": "hex:4D 6F 6F 6E 42 6F 75 6E 63 65",
+      "family": "MoonBounce",
+      "cve": null,
+      "description": "MoonBounce SPI implant marker string"
+    },
+    {
+      "pattern": "hex:48 B8 55 45 46 49 5F 42 4B 21",
+      "family": "custom",
+      "cve": null,
+      "description": "mov rax, 'UEFI_BK!' bootkit construction stub"
+    },
+    {
+      "pattern": "hex:EB FE",
+      "family": "custom",
+      "cve": null,
+      "description": "Infinite loop jmp $ planted at hook sites"
+    },
+    {
+      "pattern": "hex:5F 46 56 48",
+      "family": "custom",
+      "cve": null,
+      "description": "Firmware volume header signature (_FVH) — verify FV integrity"
+    },
+    {
+      "pattern": "hex:FF 25",
+      "family": "custom",
+      "cve": null,
+      "description": "jmp qword ptr [rip+disp32] hook prologue"
+    },
+    {
+      "pattern": "hex:48 8B 04 25 60 D0 3B 00",
+      "family": "BlackLotus",
+      "cve": "CVE-2023-24932",
+      "description": "mov rax, [0x3BD060] boot services table access stub"
+    },
+    {
+      "pattern": "hex:56 4D 52 42",
+      "family": "custom",
+      "cve": null,
+      "description": "VMware ROM BIOS header (VMRB) — hypervisor hook triage"
+    },
+    {
+      "pattern": "hex:4C 6F 4A 61 78",
+      "family": "LoJax",
+      "cve": null,
+      "description": "LoJax marker string (apuser/driver components)"
+    },
+    {
+      "pattern": "hex:44 45 41 44 42 45 45 46",
+      "family": "LoJax",
+      "cve": null,
+      "description": "LoJax-style SPI implant marker bytes"
+    },
+    {
+      "pattern": "hex:50 45 00 00",
+      "family": "custom",
+      "cve": null,
+      "description": "PE signature — verify embedded executables in firmware volumes"
+    },
+    {
+      "pattern": "hex:52 53 44 53",
+      "family": "custom",
+      "cve": null,
+      "description": "Microsoft RSA signature blob — check authenticity chains"
+    },
+    {
+      "pattern": "hex:55 45 46 49 20 46 49 52 4D 57 41 52 45 20 49 4D 41 47 45",
+      "family": "clean",
+      "cve": null,
+      "description": "Well-formed firmware header banner (benign reference)"
+    },
+    {
+      "variable": "MokList",
+      "family": "BlackLotus",
+      "cve": null,
+      "description": "MOK list variable referenced by Secure Boot bypass tooling"
+    },
+    {
+      "variable": "dbx",
+      "family": "BlackLotus",
+      "cve": "CVE-2023-24932",
+      "description": "dbx variable targeted by revocation bypass chains"
+    },
+    {
+      "variable": "PK",
+      "family": "custom",
+      "cve": null,
+      "description": "Platform Key — tampering indicator when unauthenticated writes occur"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "family": "custom",
+      "cve": null,
+      "description": "Empty image hash — placeholder/blank SPI dump"
+    },
+    {
+      "pattern": "hex:4E 56 49 44 49 41 20 54 65 67 72 61",
+      "family": "custom",
+      "cve": null,
+      "description": "NVIDIA Tegra boot ROM marker (T30/T210 families)"
+    },
+    {
+      "pattern": "hex:2D 44 4D 49 2D",
+      "family": "custom",
+      "cve": null,
+      "description": "RISC-V DMI scan signature (debug module unlock)"
+    },
+    {
+      "pattern": "hex:4F 50 41 4C",
+      "family": "custom",
+      "cve": null,
+      "description": "IBM OPAL runtime marker (POWER firmware)"
+    },
+    {
+      "pattern": "# barzakh-hpc-profile v1",
+      "family": "custom",
+      "cve": null,
+      "description": "HPC telemetry profile header (covert-channel profiling artifact)"
+    },
+    {
+      "pattern": "hex:41 56 42 20 52 4F 4C 4C 42 41 43 4B",
+      "family": "custom",
+      "cve": null,
+      "description": "Android Verified Boot rollback marker"
+    },
+    {
+      "pattern": "hex:76 62 6D 65 74 61",
+      "family": "custom",
+      "cve": null,
+      "description": "Android vbmeta footer magic (check for tamper/rollback)"
+    },
+    {
+      "pattern": "hex:49 4D 47 34",
+      "family": "custom",
+      "cve": null,
+      "description": "Apple IMG4 container magic (downgrade triage)"
+    },
+    {
+      "pattern": "hex:4B 4D 5F 46 4F 52 47 45",
+      "family": "custom",
+      "cve": null,
+      "description": "Boot Guard key manifest forge marker"
+    },
+    {
+      "pattern": "hex:62 74 6D 2E 6B 6D",
+      "family": "custom",
+      "cve": null,
+      "description": "Intel Boot Guard key manifest filename reference"
+    },
+    {
+      "pattern": "hex:43 42 53 49 47",
+      "family": "custom",
+      "cve": null,
+      "description": "Intel CSME update signature marker"
+    },
+    {
+      "pattern": "hex:24 46 57 55 50 44",
+      "family": "custom",
+      "cve": null,
+      "description": "$FWUPD capsule update marker reference"
+    },
+    {
+      "pattern": "hex:4C 56 46 53",
+      "family": "custom",
+      "cve": null,
+      "description": "LVFS (Linux Vendor Firmware Service) marker"
+    },
+    {
+      "pattern": "hex:48 45 43 49",
+      "family": "custom",
+      "cve": null,
+      "description": "Intel HECI interface marker (ME communication channel)"
+    },
+    {
+      "pattern": "hex:24 41 4D 54",
+      "family": "custom",
+      "cve": null,
+      "description": "AMT (Active Management Technology) marker"
+    },
+    {
+      "pattern": "hex:69 44 72 61 63 36",
+      "family": "custom",
+      "cve": null,
+      "description": "iDRAC6 BMC firmware marker"
+    },
+    {
+      "pattern": "hex:41 53 55 53 20 4E 56 52 41 4D",
+      "family": "custom",
+      "cve": null,
+      "description": "ASUS NVRAM redirect marker (CVE-2019-11013-style)"
+    },
+    {
+      "pattern": "hex:53 42 41 54",
+      "family": "custom",
+      "cve": null,
+      "description": "SBAT (UEFI revocation list) marker — check version chain"
+    },
+    {
+      "pattern": "hex:73 68 69 6D 2E 65 66 69",
+      "family": "custom",
+      "cve": null,
+      "description": "shim EFI loader filename reference (Bookworm-style)"
+    },
+    {
+      "pattern": "hex:74 6F 75 63 68 20 2F 74 6D 70",
+      "family": "custom",
+      "cve": null,
+      "description": "Implant dropper command stub"
+    },
+    {
+      "pattern": "hex:2F 64 65 76 2F 6D 65 6D 66 64 00",
+      "family": "custom",
+      "cve": null,
+      "description": "/dev/mem access string (raw memory implant)"
+    },
+    {
+      "pattern": "hex:63 75 72 6C 20 2D 4F 20 2D",
+      "family": "custom",
+      "cve": null,
+      "description": "Downloader command stub (second-stage retrieval)"
+    },
+    {
+      "pattern": "hex:41 50 55 53 45 52",
+      "family": "LoJax",
+      "cve": null,
+      "description": "LoJax APUSER driver component marker"
+    }
+  ]
+}

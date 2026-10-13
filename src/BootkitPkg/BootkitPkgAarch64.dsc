@@ -39,6 +39,8 @@
   BootkitPkg/Aarch64/DeviceTreeInject/DeviceTreeInject.inf
   BootkitPkg/Aarch64/IbootTrustChain/IbootTrustChain.inf
   BootkitPkg/Aarch64/SepMailboxIntercept/SepMailboxIntercept.inf
+  BootkitPkg/Aarch64/NvidiaTegraInject/NvidiaTegraInject.inf
+  BootkitPkg/Aarch64/NspCommandForge/NspCommandForge.inf
 
 [BuildOptions]
   GCC:*_*_AARCH64_CC_FLAGS = -DBARZAKH_RESEARCH=1 -I$(WORKSPACE)/BootkitPkg/Include -Wall -Wno-unused-parameter -Werror=implicit-function-declaration -fno-stack-protector

@@ -22,6 +22,7 @@ pub mod arm_trustzone;
 pub mod asus_nvram;
 pub mod attestation;
 pub mod auth_variable;
+pub mod automotive_ecu;
 pub mod baseband_firmware;
 pub mod baseband_rtos;
 pub mod blacklotus;
@@ -29,6 +30,7 @@ pub mod bluetooth_firmware;
 pub mod bmc_spi;
 pub mod boot_guard;
 pub mod boot_guard_km;
+pub mod can_injection;
 pub mod capsule_update;
 pub mod ccsds_telecommand;
 pub mod confidential_vm;
@@ -47,7 +49,9 @@ pub mod ftpm;
 pub mod gnss_receiver;
 pub mod heci;
 pub mod hook;
+pub mod hpc_monitor;
 pub mod http_boot;
+pub mod ibm_opal;
 pub mod idrac_spi;
 pub mod ims_firmware;
 pub mod inmarsat_terminal;
@@ -63,6 +67,8 @@ pub mod ios_ppl;
 pub mod ios_secure_enclave;
 pub mod ios_sep_downgrade;
 pub mod ios_trustcache;
+pub mod iot_rtos;
+pub mod iot_zephyr;
 pub mod linux_bootchain;
 pub mod logofail;
 pub mod lvfs_integrity;
@@ -75,6 +81,9 @@ pub mod memory;
 pub mod microcode_injection;
 pub mod msi_key_reuse;
 pub mod network_boot;
+pub mod nlp_strings;
+pub mod nsp_command;
+pub mod nvidia_tegra;
 pub mod nvram_entropy;
 pub mod open_ran;
 pub mod opensbi;
@@ -90,6 +99,8 @@ pub mod psp_secure_debug;
 pub mod psp_trustlets;
 pub mod psp_version_chain;
 pub mod reloader;
+pub mod riscv_bootrom;
+pub mod riscv_debug;
 pub mod rowhammer;
 pub mod runtime;
 pub mod s3_bootscript;
@@ -247,5 +258,16 @@ pub fn create_all_detectors(baseline: Option<Baseline>) -> Vec<Box<dyn Detector>
         Box::new(inmarsat_terminal::InmarsatTerminalDetector::new()),
         Box::new(satellite_bus::SatelliteBusDetector::new()),
         Box::new(ccsds_telecommand::CcsdsTelecommandDetector::new()),
+        Box::new(nvidia_tegra::NvidiaTegraDetector::new()),
+        Box::new(nsp_command::NspCommandDetector::new()),
+        Box::new(ibm_opal::IbmOpalDetector::new()),
+        Box::new(riscv_bootrom::RiscVBootRomDetector::new()),
+        Box::new(riscv_debug::RiscVDebugDetector::new()),
+        Box::new(automotive_ecu::AutomotiveEcuDetector::new()),
+        Box::new(can_injection::CanInjectionDetector::new()),
+        Box::new(iot_zephyr::IotZephyrDetector::new()),
+        Box::new(iot_rtos::IotRtosDetector::new()),
+        Box::new(hpc_monitor::HpcMonitorDetector::new()),
+        Box::new(nlp_strings::NlpStringsDetector::new()),
     ]
 }

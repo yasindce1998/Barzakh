@@ -1,6 +1,15 @@
 [workspace]
 resolver = "2"
-members = ["crates/barzakh-core", "crates/barzakh-cli", "crates/barzakh-adversary"]
+members = [
+    "crates/barzakh-core",
+    "crates/barzakh-cli",
+    "crates/barzakh-adversary",
+    "crates/barzakh-intel",
+    "crates/barzakh-ml",
+    "crates/barzakh-store",
+    "crates/barzakh-server",
+    "crates/barzakh-agent",
+]
 
 [workspace.package]
 version = "0.5.0"

@@ -1,0 +1,38 @@
+# Barzakh docker-compose deployment
+#
+# Runs the Barzakh dashboard/API server (barzakh-server) with a persistent
+# SQLite database volume.
+#
+# Usage:
+#   docker compose up -d                 # build from Dockerfile.runtime
+#   docker compose -f docker-compose.yml logs -f
+#
+# The dashboard is then available at http://localhost:8420/
+# See docs/DASHBOARD.md for the REST API.
+
+services:
+  barzakh-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    # Or use a published image instead of building locally:
+    # image: barzakh/server:latest
+    image: barzakh/server
+    container_name: barzakh-server
+    ports:
+      - "8420:8420"
+    volumes:
+      - barzakh-data:/var/lib/barzakh
+    restart: unless-stopped
+    # Note: the slim runtime image ships no curl/wget. To add a healthcheck,
+    # install curl in Dockerfile.runtime and uncomment:
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -sf http://localhost:8420/api/health || exit 1"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 10s
+
+volumes:
+  barzakh-data:
+    name: barzakh-data

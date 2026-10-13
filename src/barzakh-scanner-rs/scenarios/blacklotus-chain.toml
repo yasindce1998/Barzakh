@@ -1,0 +1,21 @@
+# BlackLotus-style Secure Boot bypass chain.
+# Models: MOK abuse → boot services hook → runtime persistence.
+[scenario]
+name = "blacklotus-chain"
+description = "Secure Boot bypass via MOK abuse, boot services hooking and runtime persistence"
+architecture = "x86_64"
+mitre = ["T1542.001", "T1542.003", "T1553.002"]
+
+[[stages]]
+payload = "blacklotus_mok"
+label = "secure-boot-bypass"
+
+[[stages]]
+payload = "boot_services_hook"
+label = "boot-hook"
+depends_on = ["secure-boot-bypass"]
+
+[[stages]]
+payload = "runtime_services_hook"
+label = "runtime-persistence"
+depends_on = ["boot-hook"]

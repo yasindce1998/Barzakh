@@ -29,7 +29,12 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 
 **Key capabilities:**
 - **21 EDK II offense modules** spanning x86_64, AArch64/Apple Silicon, and RISC-V architectures
-- **121 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
+- **132 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
+- **Threat-intelligence integration** — IOC feeds, a YARA-subset rule engine (wildcards, jumps, boolean conditions), MISP event export, and MITRE ATT&CK mapping
+- **Machine-learning analysis** — isolation-forest anomaly detection and a logistic-regression malicious/benign classifier, trainable on the adversary corpus
+- **Scan history & knowledge base** — SQLite-backed scan history with diffing/trends, and a shareable (anonymizable) firmware knowledge base
+- **Dashboard & REST API** — `barzakh-server` serves a web dashboard and JSON API (port 8420) with scheduled scans and risk-score trends
+- **Continuous monitoring** — `barzakh-agent` watches firmware targets, records history, and forwards findings to SIEMs (Elastic ECS, ArcSight CEF, QRadar LEEF) or webhooks
 - **116 adversary payload generators** for automated true-positive validation
 - **Full Ring -4 coverage** — CPU microcode, speculative execution, thermal/power covert channels, voltage glitching, debug interfaces, rowhammer
 - **Hardware lab testing path** — documented progression from simulation to real silicon
@@ -118,7 +123,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 2. Barzakh Scanner — Detection Engine (Rust)
 
-**121 specialized detectors** organized by attack surface:
+**121 specialized detectors** organized by attack surface, plus runtime-extensible detection via TOML rules, IOC feeds, YARA-subset rules, and ML models (132 total registered capabilities):
 
 <details>
 <summary><b>Full Detector List</b></summary>
@@ -396,7 +401,23 @@ barzakh-adversary esp --payload dxe_persistence # Build ESP image for hardware t
 
 ---
 
-### 4. AttestationPkg — Defensive Telemetry (C11, EDK II)
+### 4. Platform Services (Rust)
+
+The scanner workspace extends beyond batch scanning into a full analysis platform:
+
+| Crate | Binary | Capability |
+|-------|--------|------------|
+| `barzakh-intel` | — | IOC feeds (`intel-feeds/`), YARA-subset rule engine (`intel-rules/`), MISP event export, MITRE ATT&CK mapping |
+| `barzakh-ml` | — | Isolation-forest anomaly detection, logistic-regression classifier, NLP string analysis; `ml train`/`ml evaluate` CLI |
+| `barzakh-store` | — | SQLite scan history (list/show/diff/trends) and firmware knowledge base (add/list/search/export/import, anonymizable) |
+| `barzakh-server` | `barzakh-server` | Embedded web dashboard + JSON REST API on port 8420: submit scans, browse findings, risk trends, scheduled rescans, KB management |
+| `barzakh-agent` | `barzakh-agent` | Continuous monitoring: polls targets on mtime change, severity-gated alerts to stdout/file/webhook, ECS/CEF/LEEF SIEM export |
+
+Scenario chains (`scenarios/*.toml`) model multi-stage attacks (e.g. BlackLotus: Secure Boot bypass → boot services hook → runtime persistence) with dependency-graph validation, and the robustness benchmark measures detection rates across mutated payload variants.
+
+---
+
+### 5. AttestationPkg — Defensive Telemetry (C11, EDK II)
 
 - TPM 2.0 PCR querying (banks 0, 2, 4, 7)
 - TCG Event Log extraction and parsing
@@ -455,7 +476,7 @@ barzakh/
 │   ├── USECASES.md                 # Offense & defense technique catalog
 │   └── LAB_TESTING.md             # Real hardware lab testing guide
 ├── src/
-│   ├── BootkitPkg/                 # Offense emulation (21 EDK II modules)
+│   ├── BootkitPkg/                 # Offense emulation (27 EDK II modules)
 │   │   ├── DxeInject/              # DXE injection + kill-switches (7 files)
 │   │   ├── ExitBootHook/           # ExitBootServices + MSR + memory (4 files)
 │   │   ├── SmmPersistence/         # SMM handler persistence
@@ -475,9 +496,17 @@ barzakh/
 │   │   ├── TpmAttestation/         # PCR monitoring
 │   │   └── EventLogExtractor/      # TCG event log parsing
 │   └── barzakh-scanner-rs/         # Rust workspace
-│       ├── crates/barzakh-core/    # Detection engine (121 detectors)
+│       ├── crates/barzakh-core/    # Detection engine (132 detectors)
 │       ├── crates/barzakh-cli/     # CLI binaries (barzakh-scanner + barzakh-adversary)
-│       └── crates/barzakh-adversary/ # Red-team library (116 payload generators)
+│       ├── crates/barzakh-adversary/ # Red-team library (127 payload generators, scenarios, robustness)
+│       ├── crates/barzakh-intel/   # IOC feeds, YARA-subset engine, MISP export, ATT&CK mapping
+│       ├── crates/barzakh-ml/      # Isolation forest + logistic classifier + NLP string analysis
+│       ├── crates/barzakh-store/   # SQLite scan history + firmware knowledge base
+│       ├── crates/barzakh-server/  # Web dashboard + REST API (barzakh-server)
+│       └── crates/barzakh-agent/   # Continuous monitoring agent (barzakh-agent)
+├── intel-feeds/                    # Bundled IOC feed (barzakh-default.json)
+├── intel-rules/                    # Bundled YARA-subset rules (*.yar)
+├── scenarios/                      # Multi-stage attack scenario chains (TOML)
 ├── scripts/
 │   ├── build.sh                    # EDK II compilation
 │   ├── qemu-run.sh                 # QEMU test harness with vTPM
@@ -551,14 +580,40 @@ cargo build --release
 ### 4. Scan Firmware
 
 ```bash
-# Scan a firmware dump with all 121 detectors
-./target/release/barzakh-scanner --target /path/to/firmware.bin --report --format html --output report.html
+# Scan a firmware dump with all detectors
+./target/release/barzakh-scanner scan --target /path/to/firmware.bin --report report.html --format html
+
+# Scan with threat intel: IOC feed + YARA rules + ML anomaly detection,
+# recording the result into the scan-history database
+./target/release/barzakh-scanner scan --target firmware.bin \
+    --ioc-feed intel-feeds/barzakh-default.json \
+    --yara intel-rules/ \
+    --ml \
+    --history barzakh-history.sqlite
+
+# Export findings for a SIEM (SARIF, CSV, ECS, CEF, LEEF)
+./target/release/barzakh-scanner scan --target firmware.bin --report report.sarif --format sarif
+
+# Browse scan history, diff two scans, view risk trends
+./target/release/barzakh-scanner history list
+./target/release/barzakh-scanner history diff 1 2
+./target/release/barzakh-scanner history trends
+
+# Record and share firmware profiles via the knowledge base
+./target/release/barzakh-scanner kb add --target firmware.bin --vendor ASUS --device "PRIME Z690-A"
+./target/release/barzakh-scanner kb export --output profiles.json --anonymize
+
+# Serve the web dashboard + REST API on port 8420
+./target/release/barzakh-server --port 8420 --db barzakh.db
+
+# Continuous monitoring with SIEM forwarding (ECS/CEF/LEEF + webhooks)
+./target/release/barzakh-agent --config agent.toml
 
 # Compare against a known-good baseline
-./target/release/barzakh-scanner --target firmware.bin --baseline clean_baseline.json --report
+./target/release/barzakh-scanner scan --target firmware.bin --baseline clean_baseline.json
 
 # Run specific detector categories
-./target/release/barzakh-scanner --target firmware.bin --scan-types spi,smm,acpi,me,hook
+./target/release/barzakh-scanner scan --target firmware.bin --scan-types spi,smm,acpi,me,hook
 ```
 
 ### 5. Validate Detectors (Red-Team Loop)
@@ -571,10 +626,20 @@ cargo test -p barzakh-adversary
 cargo test -p barzakh-adversary -- --ignored corpus_validation
 
 # Or use the standalone barzakh-adversary CLI
-./target/release/barzakh-adversary list                    # List all 116 payloads
+./target/release/barzakh-adversary list                    # List all 127 payloads
 ./target/release/barzakh-adversary generate --arch x86_64  # Generate payloads
 ./target/release/barzakh-adversary corpus --output ./corpus # Generate test corpus
 ./target/release/barzakh-adversary validate --corpus ./corpus # Validate detection rates
+
+# Run a multi-stage attack scenario chain
+./target/release/barzakh-adversary scenario run blacklotus-chain --output ./scenario-out
+
+# Benchmark detector robustness under payload mutation
+./target/release/barzakh-adversary robustness --mutations 25
+
+# Train and evaluate the ML model on the corpus
+./target/release/barzakh-scanner ml train --corpus ./corpus --output model.json
+./target/release/barzakh-scanner ml evaluate --corpus ./corpus --model model.json
 ```
 
 ---
@@ -584,7 +649,7 @@ cargo test -p barzakh-adversary -- --ignored corpus_validation
 ```bash
 cd src/barzakh-scanner-rs
 
-# Unit + integration tests (121 detectors, 116 payloads)
+# Unit + integration tests (132 detectors, 127 payloads)
 cargo test
 
 # Adversary red-team tests
@@ -611,6 +676,13 @@ For real hardware testing beyond QEMU, see [`docs/LAB_TESTING.md`](docs/LAB_TEST
 |----------|---------|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture, component interactions, data flow |
 | [`docs/ANDROID_BOOT.md`](docs/ANDROID_BOOT.md) | Android boot security — 9 modules covering pKVM, DICE, GKI, RKP, Trusty, and more |
+| [`docs/DASHBOARD.md`](docs/DASHBOARD.md) | Web dashboard & REST API (`barzakh-server`) reference |
+| [`docs/AGENT.md`](docs/AGENT.md) | Continuous monitoring agent (`barzakh-agent`) configuration |
+| [`docs/INTEL.md`](docs/INTEL.md) | Threat intelligence: IOC feeds, YARA rules, MISP export |
+| [`docs/ML.md`](docs/ML.md) | Machine-learning anomaly detection & classification |
+| [`docs/SCENARIOS.md`](docs/SCENARIOS.md) | Multi-stage attack scenario chains |
+| [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) | Firmware knowledge base CLI reference |
+| [`docs/FUZZING.md`](docs/FUZZING.md) | Protocol-aware fuzzing harness |
 | [`docs/SETUP.md`](docs/SETUP.md) | Complete environment setup (EDK II, QEMU, swtpm, Rust) |
 | [`docs/TESTING.md`](docs/TESTING.md) | Virtualization-first testing strategy and CI pipeline |
 | [`docs/USECASES.md`](docs/USECASES.md) | Complete catalog of offense/defense techniques with examples |

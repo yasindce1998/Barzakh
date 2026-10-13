@@ -33,6 +33,8 @@
 
 [Components]
   BootkitPkg/RiscV/RiscVDxeInject.inf
+  BootkitPkg/RiscV/RiscVBootRomExploit/RiscVBootRomExploit.inf
+  BootkitPkg/RiscV/RiscVDebugUnlock/RiscVDebugUnlock.inf
 
 [BuildOptions]
   GCC:*_*_RISCV64_CC_FLAGS = -DBARZAKH_RESEARCH=1 -I$(WORKSPACE)/BootkitPkg/Include -Wall -Wno-unused-parameter -Werror=implicit-function-declaration

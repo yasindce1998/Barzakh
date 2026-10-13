@@ -58,6 +58,58 @@ enum Commands {
 
     /// Inject a single payload into an existing firmware image
     InjectSingle(InjectSingleArgs),
+
+    /// Run multi-stage attack scenario chains
+    Scenario {
+        #[command(subcommand)]
+        command: ScenarioCommands,
+    },
+
+    /// Benchmark detector robustness under payload mutation
+    Robustness(RobustnessArgs),
+}
+
+// ─── Scenario ───────────────────────────────────────────────────────────────
+
+#[derive(Subcommand)]
+enum ScenarioCommands {
+    /// List bundled and loadable scenarios
+    List {
+        /// Optional directory with additional scenario TOML files
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+    },
+    /// Show a scenario's chain rendering
+    Show {
+        /// Scenario name (bundled) or path to a scenario TOML file
+        scenario: String,
+    },
+    /// Run a scenario: generate every stage and validate the detection chain
+    Run {
+        /// Scenario name (bundled) or path to a scenario TOML file
+        scenario: String,
+        /// Output directory for generated stage artifacts
+        #[arg(short, long, default_value = "scenario-out")]
+        output: PathBuf,
+        /// Emit the run report as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+// ─── Robustness ─────────────────────────────────────────────────────────────
+
+#[derive(Parser)]
+struct RobustnessArgs {
+    /// Only benchmark payloads whose name contains this filter
+    #[arg(short, long)]
+    filter: Option<String>,
+    /// Mutated variants per payload
+    #[arg(short, long, default_value = "25")]
+    mutations: usize,
+    /// Emit the benchmark report as JSON
+    #[arg(long)]
+    json: bool,
 }
 
 // ─── Generate ───────────────────────────────────────────────────────────────
@@ -206,6 +258,10 @@ enum ArchArg {
     Aarch64,
     #[value(name = "riscv64")]
     RiscV64,
+    #[value(name = "power64")]
+    Power64,
+    #[value(name = "armv7")]
+    Armv7,
 }
 
 impl From<ArchArg> for Arch {
@@ -214,6 +270,8 @@ impl From<ArchArg> for Arch {
             ArchArg::X86_64 => Arch::X86_64,
             ArchArg::Aarch64 => Arch::Aarch64,
             ArchArg::RiscV64 => Arch::RiscV64,
+            ArchArg::Power64 => Arch::Power64,
+            ArchArg::Armv7 => Arch::Armv7,
         }
     }
 }
@@ -274,6 +332,8 @@ fn run(cli: Cli) -> Result<()> {
             EspCommands::Build(args) => cmd_esp_build(args),
         },
         Commands::InjectSingle(args) => cmd_inject_single(args),
+        Commands::Scenario { command } => cmd_scenario(command),
+        Commands::Robustness(args) => cmd_robustness(args),
     }
 }
 
@@ -549,4 +609,180 @@ fn cmd_inject_single(args: InjectSingleArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+// ─── Scenario ───────────────────────────────────────────────────────────────
+
+/// Resolve a scenario by bundled name or filesystem path.
+fn resolve_scenario(name_or_path: &str) -> Result<barzakh_adversary::scenario::Scenario> {
+    use barzakh_adversary::scenario::Scenario;
+
+    let path = PathBuf::from(name_or_path);
+    if path.exists() {
+        return Scenario::load(&path);
+    }
+    barzakh_adversary::scenario::bundled()
+        .into_iter()
+        .find(|(name, _)| name == name_or_path)
+        .map(|(_, scenario)| scenario)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown scenario '{name_or_path}' — pass a bundled name or a TOML file path"
+            )
+        })
+}
+
+fn cmd_scenario(command: ScenarioCommands) -> Result<()> {
+    use barzakh_adversary::scenario::Scenario;
+
+    match command {
+        ScenarioCommands::List { dir } => {
+            println!("{} Bundled scenarios:", "▶".cyan().bold());
+            for (name, scenario) in barzakh_adversary::scenario::bundled() {
+                println!(
+                    "  {} {} — {} stages{}",
+                    "•".cyan(),
+                    name.yellow(),
+                    scenario.stages.len(),
+                    scenario
+                        .scenario
+                        .description
+                        .as_deref()
+                        .map(|d| format!(": {d}"))
+                        .unwrap_or_default()
+                );
+            }
+            if let Some(dir) = dir {
+                for entry in std::fs::read_dir(&dir)? {
+                    let path = entry?.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                        match Scenario::load(&path) {
+                            Ok(scenario) => println!(
+                                "  {} {} (file) — {} stages",
+                                "•".green(),
+                                path.display(),
+                                scenario.stages.len()
+                            ),
+                            Err(e) => eprintln!("  {} {}: {e}", "✗".red(), path.display()),
+                        }
+                    }
+                }
+            }
+        }
+        ScenarioCommands::Show { scenario } => {
+            let scenario = resolve_scenario(&scenario)?;
+            print!("{}", scenario.render_chain());
+        }
+        ScenarioCommands::Run {
+            scenario,
+            output,
+            json,
+        } => {
+            let scenario = resolve_scenario(&scenario)?;
+            if !json {
+                println!(
+                    "{} Running scenario '{}'\n",
+                    "▶".cyan().bold(),
+                    scenario.scenario.name.yellow()
+                );
+                print!("{}", scenario.render_chain());
+            }
+            let report = barzakh_adversary::scenario::run_scenario(&scenario, &output)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!();
+                for stage in &report.stages {
+                    let mark = if stage.detected {
+                        "✓".green()
+                    } else {
+                        "✗".red()
+                    };
+                    println!(
+                        "  {mark} [{}] {} → payload '{}' (risk {}, detected by: {})",
+                        stage.label,
+                        stage.payload,
+                        stage.payload,
+                        stage.risk_score,
+                        if stage.detected_by.is_empty() {
+                            "-".to_string()
+                        } else {
+                            stage.detected_by.join(", ")
+                        }
+                    );
+                    println!("     artifact: {}", stage.generated_file.display());
+                }
+                println!();
+                if report.chain_validated {
+                    println!(
+                        "{} Chain validated — every stage was detected",
+                        "✓".green().bold()
+                    );
+                } else {
+                    println!(
+                        "{} Chain NOT validated — some stages evaded detection",
+                        "⚠".red().bold()
+                    );
+                }
+            }
+            if !report.chain_validated {
+                process::exit(1);
+            }
+        }
+    }
+    Ok(())
+}
+
+// ─── Robustness ─────────────────────────────────────────────────────────────
+
+fn cmd_robustness(args: RobustnessArgs) -> Result<()> {
+    if !args.json {
+        println!(
+            "{} Benchmarking detector robustness ({} mutations per payload)",
+            "▶".cyan().bold(),
+            args.mutations
+        );
+    }
+
+    let report = barzakh_adversary::robustness::benchmark(args.filter.as_deref(), args.mutations)?;
+
+    if report.entries.is_empty() {
+        println!("{} No detectable payloads matched the filter", "○".yellow());
+        return Ok(());
+    }
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    let rows: Vec<RobustnessRow> = report
+        .entries
+        .iter()
+        .map(|e| RobustnessRow {
+            payload: e.payload.clone(),
+            mutations: e.mutations,
+            detected: e.detected,
+            rate: format!("{:.1}%", e.detection_rate * 100.0),
+        })
+        .collect();
+    println!("\n{}", Table::new(&rows));
+    println!(
+        "\n{} Mean detection rate across payloads: {:.1}%",
+        "✓".green().bold(),
+        report.mean_detection_rate * 100.0
+    );
+    Ok(())
+}
+
+#[derive(Tabled)]
+struct RobustnessRow {
+    #[tabled(rename = "Payload")]
+    payload: String,
+    #[tabled(rename = "Mutations")]
+    mutations: usize,
+    #[tabled(rename = "Detected")]
+    detected: usize,
+    #[tabled(rename = "Detection rate")]
+    rate: String,
 }

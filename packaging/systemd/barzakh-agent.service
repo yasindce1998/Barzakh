@@ -1,0 +1,55 @@
+[Unit]
+Description=Barzakh real-time firmware monitoring agent
+Documentation=https://github.com/yasindce1998/Barzakh/blob/main/docs/AGENT.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/barzakh-agent --config /etc/barzakh/agent.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+
+# The agent polls firmware files and exports SIEM events; it must not
+# be able to escalate privileges or tamper with the host.
+DynamicUser=yes
+SupplementaryGroups=barzakh
+
+# State: history DB lives with the runtime state
+StateDirectory=barzakh-agent
+StateDirectoryMode=0750
+RuntimeDirectory=barzakh-agent
+RuntimeDirectoryMode=0750
+
+# Configuration is read from /etc/barzakh/agent.toml (read-only access)
+ReadWritePaths=/var/lib/barzakh-agent
+ConfigurationDirectory=barzakh
+ConfigurationDirectoryMode=0750
+
+# Filesystem and namespace hardening (watch dependencies)
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+NoNewPrivileges=true
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

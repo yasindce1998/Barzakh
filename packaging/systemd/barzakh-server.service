@@ -1,0 +1,50 @@
+[Unit]
+Description=Barzakh firmware security dashboard/API
+Documentation=https://github.com/yasindce1998/Barzakh/blob/main/docs/DASHBOARD.md
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/barzakh-server --port 8420 --db /var/lib/barzakh/barzakh.db
+Restart=on-failure
+RestartSec=5
+
+# Dynamic unprivileged user with a persistent state directory
+DynamicUser=yes
+StateDirectory=barzakh
+StateDirectoryMode=0750
+
+# Filesystem and namespace hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=true
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+NoNewPrivileges=true
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0027
+
+# Network: the dashboard listens on 8420. To further restrict, uncomment:
+# IPAddressDeny=any
+# IPAddressAllow=localhost
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

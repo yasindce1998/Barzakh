@@ -1,5 +1,5 @@
 use anyhow::Result;
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
 
 use crate::{Arch, ExpectedFinding, Payload, PayloadConfig};
 use barzakh_core::Severity;
@@ -79,6 +79,23 @@ impl Payload for TrampolinePayload {
                 cursor2.write_u32::<LittleEndian>(0x0083_3303)?;
                 cursor2.write_u32::<LittleEndian>(0x0003_0067)?;
                 cursor2.write_u64::<LittleEndian>(0xFFFF_FFE0_0080_0000)?;
+            }
+            Arch::Power64 => {
+                // PPC64: addis r11, 0; ld r11, 8(r11); mtctr r11; bctr + 8-byte target
+                let offset = 0x100;
+                let mut cursor = std::io::Cursor::new(&mut data[offset..offset + 24]);
+                cursor.write_u32::<BigEndian>(0x3D60_0000)?; // addis r11, 0
+                cursor.write_u32::<BigEndian>(0xE96B_0008)?; // ld r11, 8(r11)
+                cursor.write_u32::<BigEndian>(0x7D69_03A6)?; // mtctr r11
+                cursor.write_u32::<BigEndian>(0x4E80_0420)?; // bctr
+                cursor.write_u64::<BigEndian>(0xFFFF_E000_0000_1000)?;
+            }
+            Arch::Armv7 => {
+                // ARM32: ldr pc, [pc, #-4]; .word target
+                let offset = 0x100;
+                let mut cursor = std::io::Cursor::new(&mut data[offset..offset + 8]);
+                cursor.write_u32::<LittleEndian>(0xE51F_F004)?; // ldr pc, [pc, #-4]
+                cursor.write_u32::<LittleEndian>(0xFFFF_8000)?;
             }
         }
 

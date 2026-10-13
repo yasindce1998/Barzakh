@@ -1,0 +1,30 @@
+[package]
+name = "barzakh-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Real-time firmware tampering monitoring agent for Barzakh"
+
+[[bin]]
+name = "barzakh-agent"
+path = "src/main.rs"
+
+[dependencies]
+barzakh-core = { path = "../barzakh-core" }
+barzakh-store = { path = "../barzakh-store" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+ureq = { version = "2", features = ["json"] }
+
+# cargo-binstall: release assets are raw binaries named
+# <binary>-<target-triple> (see .github/workflows/release.yml at the repo
+# root).
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/barzakh-agent-{ target }{ archive-suffix }"
+pkg-fmt = "bin"
+bin-dir = "{ bin }{ binary-ext }"

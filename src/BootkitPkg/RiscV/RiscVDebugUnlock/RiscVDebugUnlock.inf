@@ -1,0 +1,43 @@
+## @file
+#  RISC-V Debug Module (DMI) Unlock Emulation Module
+#
+#  Emulates unauthorized unlock of the RISC-V Debug Module. Models the
+#  DMI unlock sequence, hart debug enable with halt requests, and
+#  abstract command injection via the command register and Program
+#  Buffer.
+#
+#  Copyright (c) 2026, Barzakh Research Project
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = RiscVDebugUnlock
+  FILE_GUID                      = B2C3D4E5-2222-3333-4444-01C5DE000003
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = RiscVDebugUnlockEntry
+
+[Sources]
+  RiscVDebugUnlock.c
+  RiscVDebugUnlock.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE
+
+[BuildOptions]
+  GCC:*_*_RISCV64_CC_FLAGS = -DBARZAKH_RESEARCH=1 -Wall -Wno-unused-parameter

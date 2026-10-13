@@ -10,6 +10,7 @@ use crate::baseline::Baseline;
 use crate::detector::{Detector, Finding, Severity};
 use crate::detectors;
 use crate::reports::{ReportFormat, ReportGenerator};
+use crate::scoring::{RiskScore, VerdictPolicy};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanSummary {
@@ -35,6 +36,9 @@ pub struct ScanResult {
     pub summary: ScanSummary,
     pub findings: Vec<Finding>,
     pub scan_info: ScanInfo,
+    /// Confidence-weighted aggregate risk assessment.
+    #[serde(default)]
+    pub risk: RiskScore,
 }
 
 pub struct BarzakhScanner {
@@ -42,6 +46,8 @@ pub struct BarzakhScanner {
     pub baseline: Option<Baseline>,
     pub findings: Vec<Finding>,
     last_result: Option<ScanResult>,
+    /// Bootkit verdict policy (default reproduces the historical heuristic).
+    pub verdict_policy: VerdictPolicy,
 }
 
 impl BarzakhScanner {
@@ -51,6 +57,7 @@ impl BarzakhScanner {
             baseline: baseline.clone(),
             findings: Vec::new(),
             last_result: None,
+            verdict_policy: VerdictPolicy::default(),
         };
         scanner.register_detectors(baseline);
         scanner
@@ -66,6 +73,19 @@ impl BarzakhScanner {
         for detector in all {
             self.detectors.insert(detector.name().to_string(), detector);
         }
+    }
+
+    /// Register an additional detector at runtime (plugins, YARA rules,
+    /// IOC feeds, ML models, ...).
+    pub fn register_detector(&mut self, detector: Box<dyn Detector>) {
+        self.detectors.insert(detector.name().to_string(), detector);
+    }
+
+    /// Names of all registered detectors.
+    pub fn detector_names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.detectors.keys().map(|s| s.as_str()).collect();
+        names.sort_unstable();
+        names
     }
 
     pub fn detector_count(&self) -> usize {
@@ -108,7 +128,8 @@ impl BarzakhScanner {
         let elapsed = start.elapsed().as_secs_f64();
         let end_time = Utc::now();
 
-        let summary = Self::build_summary(&findings);
+        let risk = RiskScore::from_findings(&findings);
+        let summary = Self::build_summary(&findings, &self.verdict_policy, risk.score);
         let scan_info = ScanInfo {
             target: target.display().to_string(),
             start_time: start_time.to_rfc3339(),
@@ -120,6 +141,7 @@ impl BarzakhScanner {
             summary,
             findings: findings.clone(),
             scan_info,
+            risk,
         };
 
         self.findings = findings;
@@ -127,7 +149,7 @@ impl BarzakhScanner {
         result
     }
 
-    fn build_summary(findings: &[Finding]) -> ScanSummary {
+    fn build_summary(findings: &[Finding], policy: &VerdictPolicy, risk_score: u32) -> ScanSummary {
         let critical_count = findings
             .iter()
             .filter(|f| f.severity == Severity::Critical)
@@ -156,7 +178,7 @@ impl BarzakhScanner {
             medium_count,
             low_count,
             info_count,
-            bootkit_detected: critical_count > 0 || high_count >= 3,
+            bootkit_detected: policy.is_bootkit(critical_count, high_count, risk_score),
         }
     }
 
@@ -166,7 +188,9 @@ impl BarzakhScanner {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No scan results available. Run scan() first."))?;
 
-        let generator = ReportGenerator::new(&result.findings, self.baseline.as_ref());
+        let generator = ReportGenerator::new(&result.findings, self.baseline.as_ref())
+            .with_risk(result.risk.clone())
+            .with_target(&result.scan_info.target);
         generator.generate(output, format)
     }
 

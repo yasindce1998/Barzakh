@@ -16,6 +16,10 @@ path = "src/adversary_main.rs"
 [dependencies]
 barzakh-core = { path = "../barzakh-core" }
 barzakh-adversary = { path = "../barzakh-adversary" }
+barzakh-intel = { path = "../barzakh-intel" }
+barzakh-ml = { path = "../barzakh-ml" }
+barzakh-store = { path = "../barzakh-store" }
+barzakh-server = { path = "../barzakh-server" }
 clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
@@ -25,3 +29,12 @@ anyhow = "1"
 colored = "2"
 indicatif = "0.17"
 tabled = "0.16"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+# cargo-binstall: release assets are raw binaries named
+# <binary>-<target-triple> (see .github/workflows/release.yml at the repo
+# root).
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/barzakh-scanner-{ target }{ archive-suffix }"
+pkg-fmt = "bin"
+bin-dir = "{ bin }{ binary-ext }"

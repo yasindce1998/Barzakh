@@ -1,0 +1,107 @@
+# Barzakh GitLab CI Template
+#
+# Template for scanning firmware images with barzakh-scanner in GitLab CI.
+# Include this file and extend the hidden job template:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/yasindce1998/Barzakh/main/ci/gitlab/barzakh-scan.yml'
+#
+#   barzakh-scan:
+#     extends: .barzakh-scan
+#     variables:
+#       BARZAKH_TARGET: build/firmware.bin
+#
+# Or copy the example job below and adjust the paths.
+
+# ---------------------------------------------------------------------------
+# Hidden job template — extend to use.
+#
+# Variables (override per-job):
+#   BARZAKH_VERSION     Release version to download (default: latest)
+#   BARZAKH_TARGET      Firmware image path to scan (required in child job)
+#   BARZAKH_FAIL_ON_CRITICAL  "true"/"false" (default: true)
+# ---------------------------------------------------------------------------
+.barzakh-scan:
+  stage: test
+  image: ubuntu:24.04
+  variables:
+    BARZAKH_VERSION: latest
+    BARZAKH_TARGET: firmware.bin
+    BARZAKH_FAIL_ON_CRITICAL: "true"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl ca-certificates python3
+    - |
+      if [[ "$BARZAKH_VERSION" == "latest" ]]; then
+        BASE_URL="https://github.com/yasindce1998/Barzakh/releases/latest/download"
+      else
+        BASE_URL="https://github.com/yasindce1998/Barzakh/releases/download/${BARZAKH_VERSION}"
+      fi
+      curl --fail --silent --show-error --location \
+        --output barzakh.tar.gz \
+        "${BASE_URL}/barzakh-x86_64-unknown-linux-gnu.tar.gz"
+      curl --fail --silent --show-error --location \
+        --output barzakh.tar.gz.sha256 \
+        "${BASE_URL}/barzakh-x86_64-unknown-linux-gnu.tar.gz.sha256"
+      expected="$(sed -n 's/^\([0-9a-fA-F]\{64\}\).*$/\1/p' barzakh.tar.gz.sha256 | head -n1)"
+      actual="$(sha256sum barzakh.tar.gz | cut -d' ' -f1)"
+      if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+        echo "Checksum mismatch for barzakh release tarball" >&2
+        exit 1
+      fi
+      tar -xzf barzakh.tar.gz
+      install -m 0755 "$(find . -type f -name barzakh-scanner -printf '%h\n' | head -n1)/barzakh-scanner" /usr/local/bin/
+    - barzakh-scanner --version
+  script:
+    - |
+      status=0
+      barzakh-scanner scan \
+        --target "$BARZAKH_TARGET" \
+        --report barzakh-report.json \
+        --format json \
+        --quiet || status=$?
+      barzakh-scanner scan \
+        --target "$BARZAKH_TARGET" \
+        --report barzakh.sarif \
+        --format sarif \
+        --quiet || status=$?
+      echo "Scanner exit code: $status"
+      if [[ "$BARZAKH_FAIL_ON_CRITICAL" == "true" && -f barzakh-report.json ]]; then
+        critical="$(python3 -c 'import json,sys; d=json.load(open("barzakh-report.json")); s=d.get("summary",d); print(s.get("critical",0))')"
+        if [[ "$critical" -gt 0 ]]; then
+          echo "barzakh-scanner found ${critical} critical finding(s)" >&2
+          exit 1
+        fi
+      fi
+  artifacts:
+    when: always
+    paths:
+      - barzakh-report.json
+      - barzakh.sarif
+    reports:
+      sast: barzakh.sarif
+    expire_in: 30 days
+
+# ---------------------------------------------------------------------------
+# Example job — scans uploaded firmware artifacts whenever firmware files
+# change. Adjust the paths and rules for your project layout.
+# ---------------------------------------------------------------------------
+barzakh-scan:
+  extends: .barzakh-scan
+  needs: []
+  variables:
+    BARZAKH_TARGET: build/firmware.bin
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - firmware/**/*
+        - build/firmware.bin
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - firmware/**/*
+        - build/firmware.bin
+  # Failure policy (configurable when extending this job):
+  #   allow_failure: false              blocking gate (default here)
+  #   allow_failure: true               report-only, never blocks
+  #   allow_failure: { exit_codes: [1] }  block only on infra errors, not findings
+  # The BARZAKH_FAIL_ON_CRITICAL variable toggles the critical-findings gate.
+  allow_failure: false

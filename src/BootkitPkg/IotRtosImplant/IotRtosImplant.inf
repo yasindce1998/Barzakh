@@ -1,0 +1,38 @@
+## @file
+# IoT RTOS Implant Persistence Emulation Module
+#
+# Emulates RTOS implant persistence on IoT / embedded devices. Models
+# FreeRTOS/ThreadX-style task injection, SVC hook table redirection, and
+# watchdog-disable persistence staged against a simulated flash page.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = IotRtosImplant
+  FILE_GUID                      = B1C2D3E4-5678-9ABC-DEF0-111111111107
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = IotRtosImplantEntry
+
+[Sources]
+  IotRtosImplant.c
+  IotRtosImplant.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barzakh Dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; background: #12141a; color: #e2e5ea; }
+  header { background: #1b1f2a; padding: 1rem 2rem; border-bottom: 2px solid #2a3040; display: flex; align-items: baseline; gap: 1rem; }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  header .ver { color: #7a8299; font-size: 0.85rem; }
+  main { padding: 1.5rem 2rem; max-width: 1100px; margin: 0 auto; }
+  section { margin-bottom: 2rem; }
+  h2 { font-size: 1.05rem; color: #aab3c5; border-bottom: 1px solid #2a3040; padding-bottom: 0.4rem; }
+  input, button, select { background: #222735; color: #e2e5ea; border: 1px solid #3a4256; border-radius: 6px; padding: 0.5rem 0.8rem; font-size: 0.9rem; }
+  input { width: 420px; max-width: 70%; }
+  button { cursor: pointer; }
+  button:hover { background: #2c3345; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid #262c3a; }
+  th { color: #8b94a8; font-weight: 600; }
+  .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+  .critical { background: #5a1220; color: #ff7b8f; }
+  .high { background: #552a12; color: #ffab7b; }
+  .medium { background: #514412; color: #ffd97b; }
+  .low { background: #12405a; color: #7bd4ff; }
+  .clean { background: #12402a; color: #7bffb0; }
+  .muted { color: #7a8299; }
+  .row { display: flex; gap: 0.6rem; align-items: center; margin: 0.6rem 0; flex-wrap: wrap; }
+  pre { background: #1a1e28; padding: 0.8rem; border-radius: 8px; overflow-x: auto; font-size: 0.8rem; }
+  #msg { margin-left: auto; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Barzakh</h1>
+  <span class="ver">firmware security dashboard</span>
+  <span id="msg" class="muted"></span>
+</header>
+<main>
+  <section>
+    <h2>New scan</h2>
+    <div class="row">
+      <input id="target" placeholder="/path/to/firmware.bin" />
+      <button onclick="submitScan()">Scan</button>
+      <button onclick="loadDetectors()">Detectors</button>
+      <button onclick="loadScenarios()">Scenarios</button>
+      <button onclick="loadTrends()">Trends</button>
+      <button onclick="loadKb()">Knowledge Base</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Recent scans</h2>
+    <table id="scans"><thead><tr>
+      <th>#</th><th>Time</th><th>Target</th><th>Risk</th><th>Verdict</th><th>C/H/M/L</th>
+    </tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Schedule a recurring scan</h2>
+    <div class="row">
+      <input id="sched-target" placeholder="/path/to/firmware.bin" style="width:300px" />
+      <input id="sched-interval" type="number" value="3600" style="width:100px" />
+      <button onclick="addSchedule()">Schedule (seconds)</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Output</h2>
+    <pre id="output">Ready. Submit a scan or press a button.</pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const out = (text) => { $("output").textContent = typeof text === "string" ? text : JSON.stringify(text, null, 2); };
+const msg = (text, ok) => { $("msg").textContent = text; $("msg").style.color = ok ? "#7bffb0" : "#ff7b8f"; };
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || res.statusText);
+  return body;
+}
+
+function badge(level) {
+  const cls = ["critical","high"].includes(level) ? level : ["medium","low","clean"].includes(level) ? level : "low";
+  return `<span class="badge ${cls}">${level}</span>`;
+}
+
+async function submitScan() {
+  const target = $("target").value.trim();
+  if (!target) { msg("enter a target path", false); return; }
+  try {
+    msg("scanning…", true);
+    const result = await api("/api/scans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+    msg(`scan #${result.scan_id} recorded`, true);
+    await loadScans();
+    const detail = await api(`/api/scans/${result.scan_id}`);
+    out(detail);
+  } catch (e) { msg(e.message, false); }
+}
+
+async function loadScans() {
+  try {
+    const { scans } = await api("/api/scans");
+    const tbody = $("scans").querySelector("tbody");
+    tbody.innerHTML = (scans || []).map(s => `<tr>
+      <td>${s.id}</td>
+      <td>${s.timestamp.replace("T", " ").slice(0, 19)}</td>
+      <td>${s.target}</td>
+      <td>${badge(s.risk_level)} ${s.risk_score}/100</td>
+      <td>${s.bootkit_detected ? badge("critical") + " bootkit" : badge("clean") + " clean"}</td>
+      <td>${s.critical_count}/${s.high_count}/${s.medium_count}/${s.low_count}</td>
+    </tr>`).join("") || `<tr><td colspan="6" class="muted">no scans yet</td></tr>`;
+  } catch (e) { msg(e.message, false); }
+}
+
+async function loadDetectors() {
+  try { out(await api("/api/detectors")); msg("detectors loaded", true); }
+  catch (e) { msg(e.message, false); }
+}
+
+async function loadScenarios() {
+  try { out(await api("/api/scenarios")); msg("scenarios loaded", true); }
+  catch (e) { msg(e.message, false); }
+}
+
+async function loadTrends() {
+  try { out(await api("/api/trends")); msg("trends loaded", true); }
+  catch (e) { msg(e.message, false); }
+}
+
+async function loadKb() {
+  try { out(await api("/api/kb")); msg("knowledge base loaded", true); }
+  catch (e) { msg(e.message, false); }
+}
+
+async function addSchedule() {
+  const target = $("sched-target").value.trim();
+  const interval = parseInt($("sched-interval").value, 10) || 3600;
+  if (!target) { msg("enter a target path", false); return; }
+  try {
+    out(await api("/api/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, interval_secs: interval }),
+    }));
+    msg("scheduled", true);
+  } catch (e) { msg(e.message, false); }
+}
+
+loadScans();
+</script>
+</body>
+</html>

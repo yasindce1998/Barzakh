@@ -1,0 +1,20 @@
+# Mobile boot chain compromise: verified-boot tamper → rollback → TEE implant.
+[scenario]
+name = "mobile-bootchain"
+description = "Android verified boot tampering with rollback and Trusty TEE implant"
+architecture = "aarch64"
+mitre = ["T1542.001", "T1627"]
+
+[[stages]]
+payload = "android_vbmeta_tamper"
+label = "vbmeta-tamper"
+
+[[stages]]
+payload = "android_avb_rollback"
+label = "avb-rollback"
+depends_on = ["vbmeta-tamper"]
+
+[[stages]]
+payload = "android_trusty_tamper"
+label = "tee-implant"
+depends_on = ["avb-rollback"]

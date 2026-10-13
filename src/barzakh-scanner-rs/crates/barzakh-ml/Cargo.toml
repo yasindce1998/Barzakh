@@ -1,0 +1,13 @@
+[package]
+name = "barzakh-ml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Machine-learning analysis for the Barzakh scanner: anomaly detection, classification, NLP string analysis"
+
+[dependencies]
+barzakh-core = { path = "../barzakh-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }

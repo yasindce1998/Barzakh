@@ -1,0 +1,65 @@
+# Barzakh Runtime Image
+#
+# Multi-stage build: the builder stage compiles the full Rust workspace
+# (all four binaries); the runtime stage carries only the binaries plus
+# CA certificates.
+#
+# Build:
+#   docker build -f Dockerfile.runtime -t barzakh/runtime .
+#
+# Run the dashboard/API server (default entrypoint, port 8420):
+#   docker run --rm -p 8420:8420 -v barzakh-data:/var/lib/barzakh barzakh/runtime
+#
+# barzakh-scanner can be run from this image too — mount the firmware
+# image and override the entrypoint:
+#   docker run --rm -v $PWD/fw.bin:/fw.bin --entrypoint barzakh-scanner \
+#       barzakh/runtime --target /fw.bin
+#
+# See docs/DASHBOARD.md for the REST API served on port 8420.
+
+# ---------------------------------------------------------------------------
+# Stage 1: builder
+# ---------------------------------------------------------------------------
+# Note: rust:1-slim tracks the latest stable toolchain — the workspace
+# uses edition 2024 crates, which require Rust >= 1.85.
+FROM rust:1-slim AS builder
+
+WORKDIR /build
+
+# Build dependencies first for better layer caching
+COPY src/barzakh-scanner-rs/Cargo.toml src/barzakh-scanner-rs/Cargo.lock ./
+COPY src/barzakh-scanner-rs/crates ./crates
+
+# Build the whole workspace: barzakh-scanner, barzakh-adversary,
+# barzakh-server, barzakh-agent (all binaries defined by workspace members)
+RUN cargo build --release --locked
+
+# ---------------------------------------------------------------------------
+# Stage 2: runtime
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.title="Barzakh"
+LABEL org.opencontainers.image.description="UEFI firmware security research platform (scanner, adversary, server, agent)"
+LABEL org.opencontainers.image.source="https://github.com/yasindce1998/Barzakh"
+
+# CA certificates only — the runtime needs nothing else
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home --shell /usr/sbin/nologin barzakh
+
+COPY --from=builder /build/target/release/barzakh-scanner /usr/local/bin/barzakh-scanner
+COPY --from=builder /build/target/release/barzakh-adversary /usr/local/bin/barzakh-adversary
+COPY --from=builder /build/target/release/barzakh-server /usr/local/bin/barzakh-server
+COPY --from=builder /build/target/release/barzakh-agent /usr/local/bin/barzakh-agent
+
+# Persistent state directory for the server's SQLite DB
+RUN mkdir -p /var/lib/barzakh && chown barzakh:barzakh /var/lib/barzakh
+VOLUME ["/var/lib/barzakh"]
+
+USER barzakh
+
+EXPOSE 8420
+
+ENTRYPOINT ["barzakh-server", "--port", "8420", "--db", "/var/lib/barzakh/barzakh.db"]

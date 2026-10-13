@@ -1,0 +1,38 @@
+## @file
+# NVIDIA Security Processor Command Forge Emulation Module
+#
+# Emulates forged commands sent to the NVIDIA Security Processor (NSP).
+# Models secure-mailbox response-channel redirect, forged NSP command
+# construction, and Security Engine keyslot dump emulation.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = NspCommandForge
+  FILE_GUID                      = A1B2C3D4-1111-2222-3333-AAC064DE0009
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = NspCommandForgeEntry
+
+[Sources]
+  NspCommandForge.c
+  NspCommandForge.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

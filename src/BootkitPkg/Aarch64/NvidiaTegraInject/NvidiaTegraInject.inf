@@ -1,0 +1,38 @@
+## @file
+# NVIDIA Tegra Boot Chain Implant Emulation Module
+#
+# Emulates a Ring -3 class boot chain implant on NVIDIA Tegra-class SoCs.
+# Models MB1/BPMP stage hooking, public-key (PKC) hash override, and
+# Security Engine (SE) signature-verification skipping.
+#
+# Copyright (c) 2026, Barzakh Research Project
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = NvidiaTegraInject
+  FILE_GUID                      = A1B2C3D4-1111-2222-3333-AAC064DE0008
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = NvidiaTegraInjectEntry
+
+[Sources]
+  NvidiaTegraInject.c
+  NvidiaTegraInject.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PrintLib
+
+[Depex]
+  TRUE

@@ -1,0 +1,172 @@
+// Barzakh Jenkins Declarative Pipeline — Firmware Security Scanning
+//
+// Downloads a barzakh-scanner release, scans an uploaded firmware image,
+// archives SARIF + JSON reports, and fails the build on critical findings.
+//
+// Parameters:
+//   FIRMWARE_PATH  Path to the firmware image (relative to workspace or
+//                  absolute on the agent). Defaults to 'firmware.bin'.
+//
+// Usage:
+//   1. Upload your firmware image as a build artifact or check it into the
+//      workspace, then run this pipeline.
+//   2. Or copy the 'Scan firmware' stage into your own pipeline.
+//
+// Requirements on the agent: curl, tar, python3, sha256sum.
+
+pipeline {
+    agent any
+
+    parameters {
+        string(
+            name: 'FIRMWARE_PATH',
+            defaultValue: 'firmware.bin',
+            description: 'Path to the firmware image to scan (workspace-relative or absolute)'
+        )
+        string(
+            name: 'BARZAKH_VERSION',
+            defaultValue: 'latest',
+            description: 'barzakh release version (latest or a tag like v0.5.0)'
+        )
+        booleanParam(
+            name: 'FAIL_ON_CRITICAL',
+            defaultValue: true,
+            description: 'Fail the build when critical findings are present'
+        )
+    }
+
+    environment {
+        // Tarball naming matches the release workflow assets
+        BARZAKH_TARBALL = 'barzakh-x86_64-unknown-linux-gnu.tar.gz'
+        REPORT_JSON     = 'barzakh-report.json'
+        REPORT_SARIF    = 'barzakh.sarif'
+        REPORT_HTML     = 'barzakh-report.html'
+    }
+
+    stages {
+
+        stage('Resolve firmware') {
+            steps {
+                script {
+                    if (!fileExists(params.FIRMWARE_PATH)) {
+                        error("Firmware image not found: ${params.FIRMWARE_PATH}. " +
+                              "Upload it to the workspace or set FIRMWARE_PATH.")
+                    }
+                    echo "Scanning firmware: ${params.FIRMWARE_PATH}"
+                    sh "sha256sum '${params.FIRMWARE_PATH}'"
+                }
+            }
+        }
+
+        stage('Download barzakh-scanner') {
+            steps {
+                script {
+                    if (params.BARZAKH_VERSION == 'latest') {
+                        env.BARZAKH_BASE_URL = 'https://github.com/yasindce1998/Barzakh/releases/latest/download'
+                    } else {
+                        env.BARZAKH_BASE_URL = "https://github.com/yasindce1998/Barzakh/releases/download/${params.BARZAKH_VERSION}"
+                    }
+                }
+                sh '''
+                    set -euo pipefail
+                    curl --fail --silent --show-error --location \
+                        --output "${BARZAKH_TARBALL}" \
+                        "${BARZAKH_BASE_URL}/${BARZAKH_TARBALL}"
+                    curl --fail --silent --show-error --location \
+                        --output "${BARZAKH_TARBALL}.sha256" \
+                        "${BARZAKH_BASE_URL}/${BARZAKH_TARBALL}.sha256"
+                    expected="$(sed -n 's/^\\([0-9a-fA-F]\\{64\\}\\).*$/\\1/p' "${BARZAKH_TARBALL}.sha256" | head -n1)"
+                    actual="$(sha256sum "${BARZAKH_TARBALL}" | cut -d' ' -f1)"
+                    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+                        echo "Checksum mismatch for ${BARZAKH_TARBALL}" >&2
+                        exit 1
+                    fi
+                    echo "Checksum verified: $actual"
+                    tar -xzf "${BARZAKH_TARBALL}"
+                    BINDIR="$(find . -type f -name barzakh-scanner -printf '%h\\n' | head -n1)"
+                    chmod +x "${BINDIR}/barzakh-scanner"
+                    "${BINDIR}/barzakh-scanner" --version
+                '''
+            }
+        }
+
+        stage('Scan firmware') {
+            steps {
+                script {
+                    // Capture the scanner exit code instead of letting it
+                    // abort the build: the critical-finding gate below
+                    // decides the final verdict.
+                    env.SCAN_STATUS = sh(
+                        returnStatus: true,
+                        script: '''
+                            set -uo pipefail
+                            BINDIR="$(find . -type f -name barzakh-scanner -printf '%h\\n' | head -n1)"
+                            "${BINDIR}/barzakh-scanner" scan \
+                                --target "${FIRMWARE_PATH}" \
+                                --report "${REPORT_JSON}" \
+                                --format json \
+                                --quiet || true
+                            "${BINDIR}/barzakh-scanner" scan \
+                                --target "${FIRMWARE_PATH}" \
+                                --report "${REPORT_SARIF}" \
+                                --format sarif \
+                                --quiet || true
+                            "${BINDIR}/barzakh-scanner" report \
+                                --target "${FIRMWARE_PATH}" \
+                                --format html \
+                                --output "${REPORT_HTML}" || true
+                        '''
+                    )
+                    echo "Scanner exit code: ${env.SCAN_STATUS} (non-zero indicates findings)"
+                }
+            }
+        }
+
+        stage('Gate on critical findings') {
+            when { expression { params.FAIL_ON_CRITICAL } }
+            steps {
+                script {
+                    if (!fileExists(env.REPORT_JSON)) {
+                        error("Scanner produced no JSON report (${env.REPORT_JSON}) — scan failed.")
+                    }
+                    def critical = sh(
+                        returnStdout: true,
+                        script: '''
+                            python3 - "${REPORT_JSON}" <<'PYEOF'
+import json, sys
+with open(sys.argv[1]) as fh:
+    doc = json.load(fh)
+summary = doc.get("summary", doc)
+print(summary.get("critical", 0))
+PYEOF
+                        '''
+                    ).trim()
+                    echo "Critical findings: ${critical}"
+                    if (critical.toInteger() > 0) {
+                        error("barzakh-scanner found ${critical} critical finding(s) in ${params.FIRMWARE_PATH}")
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Archive all report formats for every build — success or failure
+            archiveArtifacts(
+                artifacts: "${env.REPORT_JSON}, ${env.REPORT_SARIF}, ${env.REPORT_HTML}",
+                allowEmptyArchive: true,
+                fingerprint: true
+            )
+        }
+        success {
+            echo "Barzakh scan completed with no blocking findings."
+        }
+        failure {
+            echo "Build failed — check the archived barzakh reports in this build's artifacts."
+        }
+        unstable {
+            echo "Build unstable — check the archived barzakh reports."
+        }
+    }
+}

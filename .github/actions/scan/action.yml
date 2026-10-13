@@ -1,0 +1,134 @@
+name: 'Barzakh Firmware Scan'
+description: >
+  Scan a firmware image with barzakh-scanner, produce a SARIF report,
+  upload it as a workflow artifact, and optionally fail the job when
+  critical findings are present.
+
+inputs:
+  target:
+    description: 'Path to the firmware image to scan'
+    required: true
+  sarif:
+    description: 'Output SARIF report path'
+    required: false
+    default: 'barzakh.sarif'
+  fail-on-critical:
+    description: 'Fail the step when critical findings are found'
+    required: false
+    default: 'true'
+  version:
+    description: 'barzakh release version to download ("latest" or a tag like v0.5.0)'
+    required: false
+    default: 'latest'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve download URL
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.version }}" == "latest" ]]; then
+          echo "BARZAKH_BASE_URL=https://github.com/yasindce1998/Barzakh/releases/latest/download" >> "$GITHUB_ENV"
+        else
+          echo "BARZAKH_BASE_URL=https://github.com/yasindce1998/Barzakh/releases/download/${{ inputs.version }}" >> "$GITHUB_ENV"
+        fi
+
+    - name: Download barzakh-scanner release
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/barzakh"
+        cd "$RUNNER_TEMP/barzakh"
+
+        tarball="barzakh-x86_64-unknown-linux-gnu.tar.gz"
+
+        echo "Downloading ${BARZAKH_BASE_URL}/${tarball} ..."
+        curl --fail --silent --show-error --location \
+          --output "$tarball" "${BARZAKH_BASE_URL}/${tarball}"
+        curl --fail --silent --show-error --location \
+          --output "$tarball.sha256" "${BARZAKH_BASE_URL}/${tarball}.sha256"
+
+        # Verify checksum (grep/sed based — no jq dependency)
+        expected="$(sed -n 's/^\([0-9a-fA-F]\{64\}\).*$/\1/p' "$tarball.sha256" | head -n1)"
+        actual="$(sha256sum "$tarball" | cut -d' ' -f1)"
+        if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+          echo "Checksum mismatch for $tarball" >&2
+          echo "  expected: $expected" >&2
+          echo "  actual:   $actual" >&2
+          exit 1
+        fi
+        echo "Checksum verified ($actual)"
+
+        tar -xzf "$tarball"
+        find . -type f -name barzakh-scanner -exec chmod +x {} \;
+        BIN_DIR="$(find . -type f -name barzakh-scanner -printf '%h\n' | head -n1)"
+        echo "$RUNNER_TEMP/barzakh/$BIN_DIR" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/barzakh/$BIN_DIR/barzakh-scanner" --version
+
+    - name: Scan firmware
+      shell: bash
+      run: |
+        set -euo pipefail
+        target="${{ inputs.target }}"
+        sarif="${{ inputs.sarif }}"
+
+        if [[ ! -f "$target" ]]; then
+          echo "Firmware image not found: $target" >&2
+          exit 1
+        fi
+
+        status=0
+        barzakh-scanner scan \
+          --target "$target" \
+          --report "$sarif" \
+          --format sarif \
+          --quiet || status=$?
+
+        # Exit codes: 0 = clean, non-zero = findings or error.
+        # Capture but do not fail yet — critical-finding gate decides below.
+        echo "BARZAKH_SCAN_STATUS=$status" >> "$GITHUB_ENV"
+        echo "Scanner exit code: $status"
+        exit 0
+
+    - name: Upload SARIF artifact
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: barzakh-sarif
+        path: ${{ inputs.sarif }}
+        if-no-files-found: warn
+
+    - name: Check for critical findings
+      shell: bash
+      run: |
+        set -euo pipefail
+        sarif="${{ inputs.sarif }}"
+
+        if [[ "${{ inputs.fail-on-critical }}" != "true" ]]; then
+          echo "fail-on-critical disabled — skipping gate"
+          exit 0
+        fi
+
+        if [[ ! -f "$sarif" ]]; then
+          echo "SARIF report missing: $sarif (scan may have failed)" >&2
+          exit 1
+        fi
+
+        # Count SARIF results with error-level severity (critical findings)
+        critical="$(python3 -c 'import json,sys
+        doc = json.load(open(sys.argv[1]))
+        results = doc.get("runs", [{}])[0].get("results", [])
+        print(sum(1 for r in results if r.get("level") == "error"))' "$sarif")"
+
+        echo "Critical findings: $critical"
+        if [[ "$critical" -gt 0 ]]; then
+          echo "::error::barzakh-scanner found $critical critical finding(s) in ${{ inputs.target }}"
+          exit 1
+        fi
+
+        # Propagate hard scanner errors (non-zero status with no report is handled above)
+        if [[ "${BARZAKH_SCAN_STATUS:-0}" -ge 2 ]]; then
+          echo "::error::barzakh-scanner exited with status ${BARZAKH_SCAN_STATUS}"
+          exit 1
+        fi

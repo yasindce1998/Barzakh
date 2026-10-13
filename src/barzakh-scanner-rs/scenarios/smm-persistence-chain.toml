@@ -1,0 +1,20 @@
+# SMM persistence chain: DXE foothold → SMM implant → runtime hook.
+[scenario]
+name = "smm-persistence-chain"
+description = "DXE foothold followed by SMM persistence and runtime services hooking"
+architecture = "x86_64"
+mitre = ["T1542.001", "T1068"]
+
+[[stages]]
+payload = "boot_services_hook"
+label = "foothold"
+
+[[stages]]
+payload = "smm_timing_anomaly"
+label = "smm-persistence"
+depends_on = ["foothold"]
+
+[[stages]]
+payload = "runtime_services_hook"
+label = "runtime-hook"
+depends_on = ["smm-persistence"]

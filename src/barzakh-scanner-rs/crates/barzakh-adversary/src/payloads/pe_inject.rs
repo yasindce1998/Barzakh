@@ -44,6 +44,10 @@ impl Payload for PeInjectPayload {
             Arch::X86_64 => 0x8664,
             Arch::Aarch64 => 0xAA64,
             Arch::RiscV64 => 0x5064,
+            // IBM POWER / OpenPOWER (PowerPC 64-bit, big endian)
+            Arch::Power64 => 0x01F2,
+            // ARM Thumb-2 (32-bit)
+            Arch::Armv7 => 0x01C4,
         };
         data[coff_offset] = machine as u8;
         data[coff_offset + 1] = (machine >> 8) as u8;

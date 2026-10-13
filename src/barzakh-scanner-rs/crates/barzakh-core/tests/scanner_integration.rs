@@ -114,7 +114,18 @@ fn agtt_trace_with_hook() -> Vec<u8> {
 #[test]
 fn test_scanner_creation_with_all_detectors() {
     let scanner = BarzakhScanner::new(None);
-    assert_eq!(scanner.detector_count(), 121);
+    // The detector set grows over releases; assert the documented floor and
+    // that every detector name is unique.
+    assert!(
+        scanner.detector_count() >= 121,
+        "expected at least 121 detectors, got {}",
+        scanner.detector_count()
+    );
+    let names = scanner.detector_names();
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), names.len(), "detector names must be unique");
 }
 
 #[test]

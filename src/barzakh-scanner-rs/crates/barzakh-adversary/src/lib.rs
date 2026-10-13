@@ -2,6 +2,8 @@ pub mod corpus;
 pub mod deploy;
 pub mod harness;
 pub mod payloads;
+pub mod robustness;
+pub mod scenario;
 pub mod validate;
 
 use anyhow::Result;
@@ -13,6 +15,10 @@ pub enum Arch {
     X86_64,
     Aarch64,
     RiscV64,
+    /// IBM POWER / OpenPOWER (OPAL, skiboot)
+    Power64,
+    /// 32-bit ARM (automotive ECUs, IoT microcontrollers)
+    Armv7,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

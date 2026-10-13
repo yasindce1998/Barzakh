@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::detector::{Detector, DetectorError, Finding, Severity};
+use crate::symengine::{SinkKind, SymConfig, SymEngine};
 
 #[allow(dead_code)]
 const PE_MAGIC: [u8; 2] = [0x4D, 0x5A];
@@ -538,6 +539,95 @@ impl SymExecDetector {
 
         findings
     }
+
+    /// Run the bounded symbolic execution engine over code regions that
+    /// contain dangerous sink instructions (WRMSR / port I/O / CPUID) and
+    /// report sinks that are reachable under satisfiable path conditions.
+    fn detect_symbolic_sinks(&self, data: &[u8]) -> Vec<Finding> {
+        let mut findings = Vec::new();
+
+        // Find candidate sink instructions.
+        let mut regions: Vec<usize> = Vec::new();
+        for i in 0..data.len().saturating_sub(1) {
+            let is_sink = (data[i] == 0x0F && matches!(data[i + 1], 0x30 | 0x32 | 0xA2))
+                || matches!(data[i], 0xEC..=0xEF);
+            if is_sink {
+                regions.push(i);
+            }
+        }
+        if regions.is_empty() {
+            return findings;
+        }
+
+        let engine = SymEngine::new(SymConfig::default());
+        let mut reported: Vec<(usize, SinkKind)> = Vec::new();
+
+        for &sink_off in &regions {
+            // Analyze a window ending at the sink: guards usually precede it.
+            let window_start = sink_off.saturating_sub(64);
+            let window = &data[window_start..(sink_off + 2).min(data.len())];
+            let report = engine.execute(window);
+
+            for sink in &report.sinks {
+                // Convert the in-window offset to the image offset.
+                let image_off = window_start + sink.offset;
+                if reported
+                    .iter()
+                    .any(|(o, k)| *o == image_off && *k == sink.kind)
+                {
+                    continue;
+                }
+                // Only report sinks that are actually guarded by symbolic
+                // path conditions — unguarded sink bytes in random data are
+                // too noisy.
+                if sink.conditions.is_empty() {
+                    continue;
+                }
+
+                let rendered: Vec<String> = sink.conditions.iter().map(|c| c.render()).collect();
+                let severity = if matches!(sink.kind, SinkKind::Wrmsr | SinkKind::Cli) {
+                    Severity::High
+                } else {
+                    Severity::Medium
+                };
+                reported.push((image_off, sink.kind));
+
+                findings.push(
+                    Finding::new(
+                        "symexec",
+                        severity,
+                        &format!(
+                            "Symbolically reachable {} sink at 0x{:08X}",
+                            sink.kind.as_str(),
+                            image_off
+                        ),
+                        &format!(
+                            "Bounded symbolic execution found a satisfiable path to a \
+                             {} instruction at offset 0x{:08X}, guarded by: {}.",
+                            sink.kind.as_str(),
+                            image_off,
+                            rendered.join(" ∧ ")
+                        ),
+                    )
+                    .with_confidence(0.78)
+                    .with_details(serde_json::json!({
+                        "offset": format!("0x{:08X}", image_off),
+                        "sink": sink.kind.as_str(),
+                        "path_conditions": rendered,
+                        "path_length": sink.path_length,
+                        "paths_explored": report.paths_explored,
+                    }))
+                    .with_recommendation(
+                        "Disassemble the region around the sink and verify the guard \
+                         logic; WRMSR/port sinks in firmware implants often patch MSRs \
+                         or reflash SPI flash conditionally.",
+                    ),
+                );
+            }
+        }
+
+        findings
+    }
 }
 
 impl Detector for SymExecDetector {
@@ -551,6 +641,7 @@ impl Detector for SymExecDetector {
 
         findings.extend(self.detect_bst_hooks(&data));
         findings.extend(self.detect_suspicious_patterns(&data));
+        findings.extend(self.detect_symbolic_sinks(&data));
 
         Ok(findings)
     }

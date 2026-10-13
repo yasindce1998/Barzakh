@@ -1,0 +1,100 @@
+# Maintainer: Barzakh Research Project <your-email@example.com>
+# Contributor: Barzakh Research Project <your-email@example.com>
+
+pkgname=barzakh-scanner
+pkgver=0.5.0
+pkgrel=1
+pkgdesc="UEFI firmware security research platform: scanner, adversary, server, and agent (121 detectors, closed-loop adversary validation)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/yasindce1998/Barzakh"
+license=('BSD-2-Clause-Patent')
+depends=('gcc-libs')
+makedepends=('cargo')
+checkdepends=()
+source=("$pkgname-$pkgver.tar.gz::https://github.com/yasindce1998/Barzakh/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')  # TODO: replace with the actual release tarball checksum
+# sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
+
+# AUR convention: tarball checksum is verified upstream by the release
+# workflow's .sha256 assets. If you want strict verification here, run:
+#   updpkgsums
+# and replace the SKIP entry above.
+
+prepare() {
+    cd "$srcdir/Barzakh-${pkgver}"
+
+    # Vendor dependencies offline if a Cargo.lock is present
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's|host: ||p')"
+}
+
+build() {
+    cd "$srcdir/Barzakh-${pkgver}/src/barzakh-scanner-rs"
+
+    export CARGO_TARGET_DIR="$srcdir/target"
+    export RUSTUP_TOOLCHAIN=stable
+
+    # Build all four binaries from the workspace
+    cargo build --release --locked --offline \
+        --bin barzakh-scanner \
+        --bin barzakh-adversary \
+        --bin barzakh-server \
+        --bin barzakh-agent
+}
+
+check() {
+    cd "$srcdir/Barzakh-${pkgver}/src/barzakh-scanner-rs"
+
+    export CARGO_TARGET_DIR="$srcdir/target"
+    export RUSTUP_TOOLCHAIN=stable
+
+    cargo test --release --locked --offline --workspace
+}
+
+package() {
+    cd "$srcdir/Barzakh-${pkgver}/src/barzakh-scanner-rs"
+
+    # Install the four binaries
+    install -Dm 0755 "$srcdir/target/release/barzakh-scanner" \
+        "$pkgdir/usr/bin/barzakh-scanner"
+    install -Dm 0755 "$srcdir/target/release/barzakh-adversary" \
+        "$pkgdir/usr/bin/barzakh-adversary"
+    install -Dm 0755 "$srcdir/target/release/barzakh-server" \
+        "$pkgdir/usr/bin/barzakh-server"
+    install -Dm 0755 "$srcdir/target/release/barzakh-agent" \
+        "$pkgdir/usr/bin/barzakh-agent"
+
+    # Bash completion is trivial when the binaries support it; otherwise
+    # generate from --help output as a best effort
+    if "$srcdir/target/release/barzakh-scanner" completions bash &> /dev/null; then
+        "$srcdir/target/release/barzakh-scanner" completions bash \
+            > "$pkgdir/usr/share/bash-completion/completions/barzakh-scanner"
+    elif command -v register-python-argcomplete &> /dev/null; then
+        :  # not applicable
+    else
+        # Best-effort completion from the help text
+        install -Dm 0644 /dev/null "$pkgdir/usr/share/bash-completion/completions/barzakh-scanner"
+        {
+            echo '_barzakh-scanner()'
+            echo '{'
+            echo '  local cur prev opts'
+            echo '  COMPREPLY=()'
+            echo '  cur="${COMP_WORDS[COMP_CWORD]}"'
+            echo '  opts="--target --report --format --baseline --help scan report baseline"'
+            echo '  COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )'
+            echo '}'
+            echo 'complete -F _barzakh-scanner barzakh-scanner'
+        } > "$pkgdir/usr/share/bash-completion/completions/barzakh-scanner"
+    fi
+
+    # systemd units (optional — enable with systemctl)
+    if [[ -d "$srcdir/Barzakh-${pkgver}/packaging/systemd" ]]; then
+        install -Dm 0644 "$srcdir/Barzakh-${pkgver}/packaging/systemd/barzakh-server.service" \
+            "$pkgdir/usr/lib/systemd/system/barzakh-server.service"
+        install -Dm 0644 "$srcdir/Barzakh-${pkgver}/packaging/systemd/barzakh-agent.service" \
+            "$pkgdir/usr/lib/systemd/system/barzakh-agent.service"
+    fi
+
+    install -Dm 0644 "$srcdir/Barzakh-${pkgver}/LICENSE" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2> /dev/null || true
+}
