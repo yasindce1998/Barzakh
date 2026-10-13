@@ -61,7 +61,7 @@ curl -s http://localhost:8420/api/detectors
 ```
 
 ```json
-{"count": 121, "detectors": [{"name": "blacklotus", "category": "secureboot", "severity": "critical"}, ...]}
+{"count": 132, "detectors": [{"name": "blacklotus", "category": "secureboot", "severity": "critical"}, ...]}
 ```
 
 ### Submit a scan
@@ -73,10 +73,10 @@ curl -s -X POST http://localhost:8420/api/scans \
 ```
 
 ```json
-{"scan_id": 7}
+{"scan_id": 7, "status": "complete", "risk_score": 87, "bootkit_detected": true}
 ```
 
-The scan runs asynchronously; poll `GET /api/scans/{id}` for status and results.
+The scan runs synchronously (firmware images typically scan in well under a second) and the response already carries the verdict summary. Use `GET /api/scans/{id}` for the full findings list.
 
 ### List scans
 
@@ -86,7 +86,9 @@ curl -s http://localhost:8420/api/scans
 
 ```json
 {"scans": [{"scan_id": 7, "target": "/srv/firmware/fw.bin", "status": "complete",
-            "risk_score": 87, "critical": 1, "high": 3, "timestamp": "2026-10-13T09:15:02Z"}]}
+            "bootkit_detected": true, "risk_score": 87, "risk_level": "high",
+            "critical": 1, "high": 3, "medium": 6, "low": 11, "info": 4,
+            "total_findings": 25, "timestamp": "2026-10-13T09:15:02Z"}]}
 ```
 
 ### Get a single scan
@@ -96,11 +98,13 @@ curl -s http://localhost:8420/api/scans/7
 ```
 
 ```json
-{"scan_id": 7, "target": "/srv/firmware/fw.bin", "status": "complete", "risk_score": 87,
+{"scan_id": 7, "target": "/srv/firmware/fw.bin", "status": "complete", "bootkit_detected": true,
+ "risk_score": 87, "risk_level": "high", "total_findings": 25,
  "summary": {"critical": 1, "high": 3, "medium": 6, "low": 11, "info": 4},
- "findings": [{"detector": "blacklotus", "severity": "critical",
-               "description": "BlackLotus-style secure boot bypass artifact",
-               "offset": "0x4f200", "mitre": "T1542.001"}]}
+ "timestamp": "2026-10-13T09:15:02Z",
+ "findings": [{"detector": "blacklotus", "severity": "critical", "confidence": 0.9,
+               "title": "BlackLotus secure boot bypass artifact",
+               "description": "UEFI bootkit artifact matching the BlackLotus kill-switch pattern"}]}
 ```
 
 ### Get a scan report (any format)
@@ -144,9 +148,12 @@ curl -s http://localhost:8420/api/trends
 ```
 
 ```json
-{"trend": [{"date": "2026-10-01", "avg_risk_score": 12, "scans": 3},
-           {"date": "2026-10-02", "avg_risk_score": 15, "scans": 5}],
- "top_detectors": [{"detector": "entropy_anomaly", "hits": 34}]}
+{"trend": [{"date": "2026-10-01", "avg_risk_score": 12.0, "scans": 3,
+            "total_findings": 34, "critical_findings": 2},
+           {"date": "2026-10-02", "avg_risk_score": 15.0, "scans": 5,
+            "total_findings": 51, "critical_findings": 4}],
+ "top_detectors": [{"detector": "entropy_anomaly", "hits": 34},
+                   {"detector": "blacklotus", "hits": 12}]}
 ```
 
 ### Knowledge base
@@ -174,8 +181,10 @@ curl -s -X POST http://localhost:8420/api/adversary/generate \
 
 ```json
 {"payload": "trampoline", "arch": "x86_64", "size": 65536,
- "sha256": "9f2c...", "path": "/var/lib/barzakh/payloads/trampoline-x86_64-65536.bin"}
+ "sha256": "9f2c...", "path": "payloads/trampoline-x86_64-65536.bin"}
 ```
+
+The payload image is written to the server's payloads directory (`payloads/` by default; override with `--payloads-dir`). The `arch` values are `x86_64`, `aarch64`, `riscv64`, `power64`, and `armv7`.
 
 ### Scenarios
 
@@ -200,7 +209,7 @@ curl -s -X POST http://localhost:8420/api/schedule \
 ```
 
 ```json
-{"schedule_id": 1, "target": "/srv/firmware/fw.bin", "interval_secs": 3600}
+{"status": "scheduled", "schedule_id": 1, "target": "/srv/firmware/fw.bin", "interval_secs": 3600}
 ```
 
 ### Dashboard

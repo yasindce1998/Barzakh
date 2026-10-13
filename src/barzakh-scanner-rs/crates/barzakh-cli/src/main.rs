@@ -408,6 +408,9 @@ struct ServeArgs {
     /// SQLite database path for scans and knowledge base
     #[arg(long, default_value = "barzakh.db")]
     db: PathBuf,
+    /// Directory where adversary payloads are materialized
+    #[arg(long)]
+    payloads_dir: Option<PathBuf>,
 }
 
 // ─── Detectors ───────────────────────────────────────────────────────────────
@@ -1410,8 +1413,8 @@ fn cmd_ml(command: MlCommands) -> Result<()> {
                 report.iforest_tpr, report.iforest_fpr
             );
             println!(
-                "  Logistic regression: TPR {:.2}  FPR {:.2}",
-                report.classifier_tpr, report.classifier_fpr
+                "  Logistic regression: TPR {:.2}  FPR {:.2}  AUC {:.2}",
+                report.classifier_tpr, report.classifier_fpr, report.classifier_auc
             );
             println!("  Confusion matrix (classifier):");
             println!("                predicted malicious  predicted benign");
@@ -1434,6 +1437,9 @@ fn cmd_serve(args: ServeArgs) -> Result<()> {
     let config = barzakh_server::ServerConfig {
         port: args.port,
         db_path: args.db,
+        payloads_dir: args
+            .payloads_dir
+            .unwrap_or_else(|| PathBuf::from("payloads")),
     };
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(barzakh_server::run_server(config))

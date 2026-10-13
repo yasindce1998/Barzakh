@@ -169,6 +169,14 @@ impl ScanStore {
         Ok(out)
     }
 
+    /// Total number of recorded scans.
+    pub fn count(&self) -> anyhow::Result<usize> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM scans", [], |row| row.get(0))?;
+        Ok(count as usize)
+    }
+
     /// Daily trend aggregation.
     pub fn trends(&self) -> anyhow::Result<Vec<TrendPoint>> {
         let mut stmt = self.conn.prepare(
@@ -185,6 +193,25 @@ impl ScanStore {
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Most-triggered detectors across all recorded scans, with hit counts.
+    pub fn top_detectors(&self, limit: usize) -> anyhow::Result<Vec<(String, usize)>> {
+        let mut stmt = self.conn.prepare("SELECT findings_json FROM scans")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for row in rows {
+            let json = row?;
+            let findings: Vec<barzakh_core::Finding> =
+                serde_json::from_str(&json).unwrap_or_default();
+            for finding in findings {
+                *counts.entry(finding.detector).or_default() += 1;
+            }
+        }
+        let mut out: Vec<(String, usize)> = counts.into_iter().collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        out.truncate(limit);
+        Ok(out)
     }
 }
 

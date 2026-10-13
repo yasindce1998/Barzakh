@@ -18,6 +18,8 @@ use barzakh_store::kb::KnowledgeBase;
 pub struct ServerConfig {
     pub port: u16,
     pub db_path: PathBuf,
+    /// Directory where `/api/adversary/generate` materializes payload images.
+    pub payloads_dir: PathBuf,
 }
 
 impl Default for ServerConfig {
@@ -25,6 +27,7 @@ impl Default for ServerConfig {
         Self {
             port: 8420,
             db_path: PathBuf::from("barzakh.db"),
+            payloads_dir: PathBuf::from("payloads"),
         }
     }
 }
@@ -32,6 +35,7 @@ impl Default for ServerConfig {
 /// A scheduled recurring scan.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Schedule {
+    pub id: u64,
     pub target: String,
     pub interval_secs: u64,
     /// Instant of the next run (epoch seconds).
@@ -45,6 +49,7 @@ pub struct AppState {
     pub store: Mutex<ScanStore>,
     pub kb: Mutex<KnowledgeBase>,
     pub schedules: Mutex<Vec<Schedule>>,
+    pub payloads_dir: PathBuf,
 }
 
 /// Run the server until shutdown.
@@ -54,7 +59,9 @@ pub async fn run_server(config: ServerConfig) -> Result<()> {
         store: Mutex::new(ScanStore::open(&config.db_path)?),
         kb: Mutex::new(KnowledgeBase::open(&config.db_path)?),
         schedules: Mutex::new(Vec::new()),
+        payloads_dir: config.payloads_dir.clone(),
     });
+    std::fs::create_dir_all(&config.payloads_dir)?;
 
     // Background scheduler: run due scheduled scans every 30 seconds.
     let scheduler_state = Arc::clone(&state);

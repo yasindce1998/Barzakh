@@ -26,10 +26,16 @@ async fn main() -> Result<()> {
                     config.db_path = db.into();
                 }
             }
+            "--payloads-dir" => {
+                if let Some(dir) = args.next() {
+                    config.payloads_dir = dir.into();
+                }
+            }
             "--help" | "-h" => {
                 println!(
                     "barzakh-server — REST API and web dashboard\n\n\
-                     Usage: barzakh-server [--port 8420] [--db barzakh.db]\n\n\
+                     Usage: barzakh-server [--port 8420] [--db barzakh.db] \
+                     [--payloads-dir payloads]\n\n\
                      Endpoints: GET / (dashboard), /api/health, /api/detectors, /api/scans,\n\
                      POST /api/scans {{\"target\": \"<firmware path>\"}}, GET /api/scans/{{id}},\n\
                      GET /api/scans/{{id}}/report?format=json|html|markdown|sarif|csv,\n\

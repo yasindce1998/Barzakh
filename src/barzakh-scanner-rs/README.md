@@ -2,20 +2,21 @@
 
 **An advanced firmware security research platform — built to hunt what antivirus can't see.**
 
-Barzakh is a high-performance detection and red-team engine written in Rust that operates where traditional security tooling goes blind: below the OS, inside the silicon. It ships **105 detectors** and **94 adversarial payloads** spanning Ring 0 to Ring -4 — from UEFI DXE drivers through Intel ME, AMD PSP, ARM TrustZone, Apple Secure Enclave, and Android Verified Boot — with an automated fuzzing harness that continuously discovers detector blind spots.
+Barzakh is a high-performance detection and red-team engine written in Rust that operates where traditional security tooling goes blind: below the OS, inside the silicon. It ships **132 detectors** and **127 adversarial payloads** spanning Ring 0 to Ring -4 — from UEFI DXE drivers through Intel ME, AMD PSP, ARM TrustZone, Apple Secure Enclave, and Android Verified Boot — plus platform services for threat intelligence (IOC feeds, YARA-subset rules, MISP export), machine-learning analysis, SQLite history and knowledge base, a REST API with web dashboard, and a continuous monitoring agent with SIEM forwarding. An automated fuzzing harness continuously discovers detector blind spots.
 
 > **One scanner. Every boot chain. Every architecture.**
-> x86_64 · AArch64 · RISC-V · Android · iOS/Apple Silicon
+> x86_64 · AArch64 · RISC-V · Android · iOS/Apple Silicon · POWER · NVIDIA Tegra · Automotive · IoT
 
 ## Why Barzakh?
 
 | | |
 |---|---|
-| **105 Detectors** | From UEFI Secure Boot to Intel ME manufacturing mode to iOS Secure Enclave |
-| **94 Red-Team Payloads** | Generate realistic attack firmware on demand — rootkits, rollbacks, chain breaks |
+| **132 Detectors** | From UEFI Secure Boot to Intel ME manufacturing mode to iOS Secure Enclave |
+| **127 Red-Team Payloads** | Generate realistic attack firmware on demand — rootkits, rollbacks, chain breaks |
 | **Automated Fuzzing** | Continuous generate → scan → gap discovery loop finds what your detectors miss |
 | **Full Chain Coverage** | Android (pKVM → DICE → GKI → Trusty) and iOS (iBoot → PPL → SEP → LocalPolicy) validated end-to-end |
 | **Ring -3 to Ring -4** | Intel ME, AMD PSP/SMU, CPU microcode, voltage glitch, Rowhammer — nothing is out of scope |
+| **Platform Services** | Threat intel, ML scoring, REST API + dashboard, monitoring agent — all in one workspace |
 | **Zero Runtime Dependencies** | Pure Rust, single static binary, no Python/Java/Docker required |
 
 ## Detection Capabilities
@@ -105,6 +106,28 @@ Barzakh is a high-performance detection and red-team engine written in Rust that
 |----------|-----------|---------|
 | OpenSBI | SBI extension table / mtvec / M-mode CSR analysis | OpenSBI firmware hooking, privilege escalation |
 | PMP Bypass | PMP config / CSR write / NOP sled detection | Physical Memory Protection misconfiguration exploits |
+| RISC-V BootROM | BootROM marker / boot chain analysis | BootROM compromise, embedded debug payloads |
+| RISC-V Debug | Debug Module (DMI) / dcsr analysis | Unlocked M-mode debug access in production |
+
+### Embedded & Specialty Platforms
+
+| Detector | Technique | Targets |
+|----------|-----------|---------|
+| NVIDIA Tegra | BootROM/MB1 marker + Security Processor analysis | Tegra boot chain implants |
+| NSP Command | NVDLA (NSP) command stream analysis | Unsigned DLA firmware, model tampering |
+| IBM OPAL | OPAL/skiboot call table analysis | POWER hostboot tampering, call hooking |
+| Automotive ECU | UDS/AUTOSAR reflash marker analysis | ECU backdoors, hidden diagnostic routines |
+| CAN Injection | CAN frame / arbitration analysis | CAN bus injection backdoors |
+| Zephyr IoT | MCUboot header / signature analysis | Zephyr signature bypass, image downgrade |
+| IoT RTOS | FreeRTOS/ThreadX/Mbed image analysis | RTOS task table hooks |
+| HPC Monitor | Cache-probe loop pattern analysis | BMC covert-channel exfiltration |
+
+### Machine Learning
+
+| Detector | Technique | Targets |
+|----------|-----------|---------|
+| ML Anomaly | Isolation forest over feature vectors | Novel implants matching no known signature |
+| NLP Strings | String-sequence analysis | Obfuscated shellcode strings, dual-use API chains |
 
 ### Android Boot Chain
 
@@ -167,8 +190,10 @@ cd src/barzakh-scanner-rs
 cargo build --release
 
 # Binary outputs at:
-#   target/release/barzakh-scanner    (defensive: scan, baseline, report, validate, detectors, info)
-#   target/release/barzakh-adversary  (offensive: generate, list, corpus, validate, qemu, esp)
+#   target/release/barzakh-scanner    (defensive: scan, baseline, report, validate, detectors, history, kb, intel, ml, serve)
+#   target/release/barzakh-adversary  (offensive: generate, list, corpus, validate, qemu, esp, scenario, robustness, fuzz)
+#   target/release/barzakh-server     (REST API + web dashboard on port 8420)
+#   target/release/barzakh-agent      (continuous monitoring with SIEM forwarding)
 ```
 
 ## Usage
@@ -196,12 +221,39 @@ barzakh-scanner detectors
 
 # Show platform and build info
 barzakh-scanner info
+
+# Threat intelligence: apply IOC feeds and YARA-subset rules to a scan
+barzakh-scanner scan --target firmware.bin --ioc-feed intel-feeds --yara intel-rules
+
+# Review scan history (SQLite)
+barzakh-scanner history list --db barzakh-history.sqlite
+
+# Manage the firmware knowledge base
+barzakh-scanner kb add --target fw.bin --vendor ASUS --device "PRIME Z690-A"
+barzakh-scanner kb list
+
+# Train and evaluate the ML layer
+barzakh-scanner ml train --corpus ./corpus --output model.json
+barzakh-scanner ml evaluate --corpus ./corpus --model model.json
+
+# Export findings for a SIEM (SARIF/CSV/ECS/CEF/LEEF)
+barzakh-scanner scan --target firmware.bin --format sarif --output findings.sarif
+
+# Start the REST API + web dashboard
+barzakh-scanner serve --port 8420 --db barzakh.db
+```
+
+### barzakh-agent (Monitoring)
+
+```bash
+# Continuous monitoring with SIEM forwarding (see docs/AGENT.md)
+barzakh-agent --config agent.toml run
 ```
 
 ### barzakh-adversary (Offensive / Fuzzing)
 
 ```bash
-# List all 94 adversarial payloads
+# List all 127 adversarial payloads
 barzakh-adversary list
 
 # Generate payloads for a specific architecture
@@ -221,47 +273,63 @@ barzakh-adversary qemu --payload trampoline
 
 # Build ESP image for hardware testing
 barzakh-adversary esp --payload dxe_persistence
+
+# Run a multi-stage attack scenario chain (see docs/SCENARIOS.md)
+barzakh-adversary scenario run --name smm-persistence-chain --output ./scenario-out
+
+# Benchmark detector robustness under payload mutation
+barzakh-adversary robustness --filter blacklotus --mutations 50
 ```
 
 ## Architecture
 
 ```
 barzakh-scanner-rs/
-├── Cargo.toml                    # Workspace root
+├── Cargo.toml                    # Workspace root (8 crates, 4 binaries)
+├── scenarios/                    # Bundled attack scenario TOMLs
 └── crates/
     ├── barzakh-core/             # Library crate (detection engine)
     │   ├── src/
     │   │   ├── lib.rs            # Public API
     │   │   ├── scanner.rs        # Scan orchestration
     │   │   ├── baseline.rs       # Baseline configuration
+    │   │   ├── scoring.rs        # Risk scoring
     │   │   ├── detector.rs       # Detector trait + types
-    │   │   ├── detectors/        # 105 detection modules
-    │   │   └── reports/          # HTML/JSON/Markdown reports
+    │   │   ├── detectors/        # 132 detection modules
+    │   │   └── reports/          # HTML/JSON/Markdown/SARIF/CSV/ECS/CEF/LEEF reports
     │   └── tests/
     │       └── scanner_integration.rs
     ├── barzakh-cli/              # Binary crate (scanner + adversary + fuzz CLIs)
     │   └── src/
     │       ├── main.rs           # Scanner CLI (defensive commands)
     │       └── adversary_main.rs # Adversary CLI (offensive commands)
-    └── barzakh-adversary/        # Red-team payload & fuzzing engine
-        ├── src/
-        │   ├── lib.rs            # Payload trait + public API
-        │   ├── payloads/         # 94 adversarial payload generators
-        │   ├── harness/          # Automated fuzzing harness (generate → scan → gap → mutate)
-        │   ├── validate/         # Scanner invocation + result comparison
-        │   ├── corpus.rs         # Malicious/clean pair generator
-        │   └── deploy/           # ESP image builder + QEMU orchestration
-        └── tests/
-            └── integration.rs    # Generate → scan → assert detection
+    ├── barzakh-adversary/        # Red-team payload & fuzzing engine
+    │   ├── src/
+    │   │   ├── lib.rs            # Payload trait + public API
+    │   │   ├── payloads/         # 127 adversarial payload generators
+    │   │   ├── harness/          # Automated fuzzing harness (generate → scan → gap → mutate)
+    │   │   ├── validate/         # Scanner invocation + result comparison
+    │   │   ├── corpus.rs         # Malicious/clean pair generator
+    │   │   ├── scenario.rs       # Multi-stage attack scenario chains
+    │   │   ├── robustness.rs     # Mutation robustness benchmarking
+    │   │   └── deploy/           # ESP image builder + QEMU orchestration
+    │   └── tests/
+    │       └── integration.rs    # Generate → scan → assert detection
+    ├── barzakh-intel/            # IOC feeds, YARA-subset engine, MISP export
+    ├── barzakh-ml/               # Isolation forest + logistic regression + training
+    ├── barzakh-store/            # SQLite scan history + firmware knowledge base
+    ├── barzakh-server/           # REST API + web dashboard (barzakh-server)
+    │   └── dashboard/            # Embedded HTML dashboard
+    └── barzakh-agent/            # Continuous monitoring agent (barzakh-agent)
 ```
 
 ## Detection Metrics
 
 | Metric | Target |
 |--------|--------|
-| True Positive Rate | >= 85% |
-| False Positive Rate | < 5% |
-| ROC-AUC | >= 0.92 |
+| True Positive Rate | >= 80% (CI-enforced) |
+| False Positive Rate | <= 10% (CI-enforced) |
+| Classifier AUC | >= 0.92 (measured 0.99 on the bundled corpus) |
 | Mean Time to Detect | < 500ms |
 
 ## Development

@@ -87,7 +87,13 @@ enum ScenarioCommands {
     /// Run a scenario: generate every stage and validate the detection chain
     Run {
         /// Scenario name (bundled) or path to a scenario TOML file
-        scenario: String,
+        scenario: Option<String>,
+        /// Bundled scenario name (e.g. smm-persistence-chain)
+        #[arg(short, long, group = "scenario_source")]
+        name: Option<String>,
+        /// Path to a custom scenario TOML file
+        #[arg(short, long, group = "scenario_source")]
+        file: Option<PathBuf>,
         /// Output directory for generated stage artifacts
         #[arg(short, long, default_value = "scenario-out")]
         output: PathBuf,
@@ -639,11 +645,13 @@ fn cmd_scenario(command: ScenarioCommands) -> Result<()> {
         ScenarioCommands::List { dir } => {
             println!("{} Bundled scenarios:", "▶".cyan().bold());
             for (name, scenario) in barzakh_adversary::scenario::bundled() {
+                let mitre = scenario.scenario.mitre.join(",");
                 println!(
-                    "  {} {} — {} stages{}",
+                    "  {} {} — {} stages [{}]{}",
                     "•".cyan(),
                     name.yellow(),
                     scenario.stages.len(),
+                    mitre.dimmed(),
                     scenario
                         .scenario
                         .description
@@ -675,10 +683,19 @@ fn cmd_scenario(command: ScenarioCommands) -> Result<()> {
         }
         ScenarioCommands::Run {
             scenario,
+            name,
+            file,
             output,
             json,
         } => {
-            let scenario = resolve_scenario(&scenario)?;
+            let source = file
+                .map(|path| path.display().to_string())
+                .or(name)
+                .or(scenario)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("specify a scenario via --name <bundled>, --file <toml>, or a positional name/path")
+                })?;
+            let scenario = resolve_scenario(&source)?;
             if !json {
                 println!(
                     "{} Running scenario '{}'\n",

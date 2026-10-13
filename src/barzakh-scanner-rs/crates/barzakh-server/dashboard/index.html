@@ -112,12 +112,12 @@ async function loadScans() {
     const { scans } = await api("/api/scans");
     const tbody = $("scans").querySelector("tbody");
     tbody.innerHTML = (scans || []).map(s => `<tr>
-      <td>${s.id}</td>
+      <td>${s.scan_id}</td>
       <td>${s.timestamp.replace("T", " ").slice(0, 19)}</td>
       <td>${s.target}</td>
       <td>${badge(s.risk_level)} ${s.risk_score}/100</td>
       <td>${s.bootkit_detected ? badge("critical") + " bootkit" : badge("clean") + " clean"}</td>
-      <td>${s.critical_count}/${s.high_count}/${s.medium_count}/${s.low_count}</td>
+      <td>${s.critical}/${s.high}/${s.medium}/${s.low}</td>
     </tr>`).join("") || `<tr><td colspan="6" class="muted">no scans yet</td></tr>`;
   } catch (e) { msg(e.message, false); }
 }

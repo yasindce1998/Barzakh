@@ -180,6 +180,7 @@ impl TrainedModel {
         );
 
         let mut report = EvalReport::default();
+        let mut classifier_scores: Vec<(bool, f64)> = Vec::new();
         for sample in &samples {
             let data = std::fs::read(&sample.path)
                 .with_context(|| format!("reading {}", sample.path.display()))?;
@@ -209,7 +210,9 @@ impl TrainedModel {
             }
 
             // Classifier: predicted probability above 0.5 → malicious.
-            let classifier_flag = self.logistic_regression.predict(&vector) > 0.5;
+            let probability = self.logistic_regression.predict(&vector);
+            classifier_scores.push((sample.malicious, probability));
+            let classifier_flag = probability > 0.5;
             let cell = if sample.malicious {
                 if classifier_flag {
                     &mut report.confusion[0][0] // actual malicious, predicted malicious
@@ -228,6 +231,7 @@ impl TrainedModel {
         report.iforest_fpr = rate(report.iforest_false_positives, report.benign);
         report.classifier_tpr = rate(report.confusion[0][0], report.malicious);
         report.classifier_fpr = rate(report.confusion[1][0], report.benign);
+        report.classifier_auc = rank_auc(&classifier_scores);
         Ok(report)
     }
 }
@@ -238,6 +242,36 @@ fn rate(hits: usize, total: usize) -> f64 {
     } else {
         hits as f64 / total as f64
     }
+}
+
+/// Rank-based (Mann-Whitney) AUC: the probability that a randomly chosen
+/// malicious sample scores higher than a randomly chosen benign one, with
+/// ties counted as half. `(is_malicious, score)` pairs; 0.5 = random.
+fn rank_auc(scores: &[(bool, f64)]) -> f64 {
+    let malicious: Vec<f64> = scores
+        .iter()
+        .filter(|(malicious, _)| *malicious)
+        .map(|(_, score)| *score)
+        .collect();
+    let benign: Vec<f64> = scores
+        .iter()
+        .filter(|(malicious, _)| !*malicious)
+        .map(|(_, score)| *score)
+        .collect();
+    if malicious.is_empty() || benign.is_empty() {
+        return 0.5;
+    }
+    let mut wins = 0.0;
+    for m in &malicious {
+        for b in &benign {
+            if m > b {
+                wins += 1.0;
+            } else if (m - b).abs() < f64::EPSILON {
+                wins += 0.5;
+            }
+        }
+    }
+    wins / (malicious.len() * benign.len()) as f64
 }
 
 /// Evaluation metrics over a corpus.
@@ -254,6 +288,9 @@ pub struct EvalReport {
     pub iforest_fpr: f64,
     pub classifier_tpr: f64,
     pub classifier_fpr: f64,
+    /// Classifier AUC (rank-based): probability a malicious sample outscores
+    /// a benign one; 0.5 = random, 1.0 = perfect separation.
+    pub classifier_auc: f64,
     /// Confusion matrix for the classifier:
     /// `[actual][predicted]` with `0 = malicious`, `1 = benign`.
     pub confusion: [[usize; 2]; 2],

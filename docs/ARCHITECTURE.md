@@ -37,7 +37,7 @@ sequenceDiagram
 | **Firmware Payload** | OVMF | Specific Open Virtual Machine Firmware builds for deterministic reproducibility. |
 | **Security Module** | TPM 2.0 | Hardware root of trust for PCR queries and event log measurements. |
 
-### 2.1 Three-Layer Architecture
+### 2.1 Layered Architecture
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
@@ -50,9 +50,16 @@ sequenceDiagram
 │  and validates scanner coverage in a closed loop.                     │
 ├───────────────────────────────────────────────────────────────────────┤
 │  Layer 3: Rust Scanner (barzakh-core + barzakh-cli)                   │
-│  Defense engine with 121 detectors (x86_64, ARM, RISC-V, Android,   │
-│  Telecom, Satellite) — analyzes memory dumps and firmware images     │
-│  for bootkit artifacts.                                              │
+│  Defense engine with 132 detectors (x86_64, ARM, RISC-V, Android,     │
+│  Telecom, Satellite) — analyzes memory dumps and firmware images      │
+│  for bootkit artifacts.                                               │
+├───────────────────────────────────────────────────────────────────────┤
+│  Layer 4: Platform Services                                           │
+│  barzakh-intel (IOC feeds, YARA-subset rules, MISP export)            │
+│  barzakh-ml (isolation forest + logistic regression)                  │
+│  barzakh-store (SQLite history + knowledge base)                      │
+│  barzakh-server (REST API + web dashboard, port 8420)                 │
+│  barzakh-agent (continuous monitoring with SIEM forwarding)           │
 └───────────────────────────────────────────────────────────────────────┘
 
 Data flow:  Adversary generates payload → Scanner detects → Results validated
@@ -157,7 +164,15 @@ barzakh/
 │   ├── ANDROID_BOOT.md       # Android boot security (9 modules)
 │   ├── TESTING.md            # Testing strategy
 │   ├── LAB_TESTING.md        # Hardware lab testing & build-mode reference
-│   └── USECASES.md           # Offense & defense use cases
+│   ├── LAB_AUTOMATION.md     # HIL lab automation
+│   ├── USECASES.md           # Offense & defense use cases
+│   ├── DASHBOARD.md          # REST API + web dashboard
+│   ├── AGENT.md              # Real-time monitoring agent
+│   ├── INTEL.md              # Threat intelligence (feeds, YARA, MISP)
+│   ├── ML.md                 # Machine-learning analysis
+│   ├── SCENARIOS.md          # Attack scenario builder
+│   ├── KNOWLEDGE_BASE.md     # Firmware knowledge base
+│   └── FUZZING.md            # Protocol fuzzing harness
 ├── src/
 │   ├── BootkitPkg/           # EDK II package: UEFI bootkit emulation (C)
 │   │   ├── DxeInject/        # DXE phase implantation + kill-switches
@@ -166,10 +181,15 @@ barzakh/
 │   │   └── RiscV/            # RISC-V M-mode firmware injection
 │   ├── LegacyBootkit/        # Legacy BIOS (16-bit asm) MBR/VBR bootkit
 │   ├── AttestationPkg/       # Defensive TPM querying & event log extractors
-│   └── barzakh-scanner-rs/   # Rust workspace
-│       ├── crates/barzakh-core/      # Detection engine library
-│       ├── crates/barzakh-cli/       # CLI binaries (barzakh-scanner + barzakh-adversary)
-│       └── crates/barzakh-adversary/ # Red-team payload generator library
+│   └── barzakh-scanner-rs/   # Rust workspace (8 crates, 4 binaries)
+│       ├── crates/barzakh-core/       # Detection engine library
+│       ├── crates/barzakh-cli/        # CLI binaries (barzakh-scanner + barzakh-adversary)
+│       ├── crates/barzakh-adversary/  # Red-team payload generator library
+│       ├── crates/barzakh-intel/      # IOC feeds, YARA-subset engine, MISP export
+│       ├── crates/barzakh-ml/         # Isolation forest + logistic regression
+│       ├── crates/barzakh-store/      # SQLite history + knowledge base
+│       ├── crates/barzakh-server/     # REST API + web dashboard (barzakh-server)
+│       └── crates/barzakh-agent/      # Monitoring agent (barzakh-agent)
 ├── scripts/
 │   ├── build.sh              # EDK II compilation
 │   ├── qemu-run.sh           # QEMU test harness with vTPM
@@ -189,7 +209,7 @@ barzakh/
 
 ## 7. Adversary Crate Architecture
 
-The `barzakh-adversary` crate implements a red-team payload generation and validation framework. It is exposed to end-users via the standalone `barzakh-adversary` binary (built from `barzakh-cli/src/adversary_main.rs`), which provides CLI commands: `generate`, `list`, `corpus`, `validate`, `qemu`, `esp`, and `inject-single`.
+The `barzakh-adversary` crate implements a red-team payload generation and validation framework. It is exposed to end-users via the standalone `barzakh-adversary` binary (built from `barzakh-cli/src/adversary_main.rs`), which provides CLI commands: `generate`, `list`, `corpus`, `validate`, `qemu`, `esp`, `inject-single`, `scenario`, and `robustness`.
 
 ### 7.1 Payload Trait
 

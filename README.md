@@ -6,7 +6,7 @@
 
 **The most comprehensive open-source UEFI firmware security research platform**
 
-*Offense emulation from Ring 0 to Ring -4 | 121 detection engines | Closed-loop adversary validation*
+*Offense emulation from Ring 0 to Ring -4 | 132 detection engines | Closed-loop adversary validation*
 
 [![CI](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml/badge.svg)](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange)](src/barzakh-scanner-rs/)
@@ -35,7 +35,7 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 - **Scan history & knowledge base** — SQLite-backed scan history with diffing/trends, and a shareable (anonymizable) firmware knowledge base
 - **Dashboard & REST API** — `barzakh-server` serves a web dashboard and JSON API (port 8420) with scheduled scans and risk-score trends
 - **Continuous monitoring** — `barzakh-agent` watches firmware targets, records history, and forwards findings to SIEMs (Elastic ECS, ArcSight CEF, QRadar LEEF) or webhooks
-- **116 adversary payload generators** for automated true-positive validation
+- **127 adversary payload generators** for automated true-positive validation
 - **Full Ring -4 coverage** — CPU microcode, speculative execution, thermal/power covert channels, voltage glitching, debug interfaces, rowhammer
 - **Hardware lab testing path** — documented progression from simulation to real silicon
 
@@ -123,7 +123,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 2. Barzakh Scanner — Detection Engine (Rust)
 
-**121 specialized detectors** organized by attack surface, plus runtime-extensible detection via TOML rules, IOC feeds, YARA-subset rules, and ML models (132 total registered capabilities):
+**132 specialized detectors** organized by attack surface, plus runtime-extensible detection via TOML rules, IOC feeds, YARA-subset rules, and ML models:
 
 <details>
 <summary><b>Full Detector List</b></summary>
@@ -251,6 +251,17 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | 119 | `ios_secure_enclave` | iOS | Secure Enclave firmware image — debug flags, unsigned image |
 | 120 | `inmarsat_terminal` | Satellite | Inmarsat/BGAN satcom terminal firmware implants |
 | 121 | `satellite_ground_station` | Satellite | Ground station firmware — telecommand injection, antenna tracking override |
+| 122 | `nvidia_tegra` | NVIDIA | Tegra boot chain implant — BootROM/MB1 compromise, Security Processor tampering |
+| 123 | `nsp_command` | NVIDIA | NVDLA (NSP) command injection — unsigned DLA firmware, model tampering |
+| 124 | `ibm_opal` | POWER | IBM OPAL/skiboot call hooking — hostboot tampering, unsigned OPAL calls |
+| 125 | `riscv_bootrom` | RISC-V | BootROM compromise — boot chain override, embedded debug payloads |
+| 126 | `riscv_debug` | RISC-V | Debug Module (DMI) unlocked — M-mode debug access enabled in production |
+| 127 | `automotive_ecu` | Automotive | ECU backdoor — UDS/AUTOSAR reflash abuse, hidden diagnostic routines |
+| 128 | `can_injection` | Automotive | CAN bus injection backdoor — arbitration abuse, diagnostic frame injection |
+| 129 | `iot_zephyr` | IoT | Zephyr/MCUboot signature bypass — unsigned image downgrade attack |
+| 130 | `iot_rtos` | IoT | FreeRTOS/ThreadX/Mbed image tampering — task table hooks |
+| 131 | `hpc_monitor` | HPC | Baseboard covert-channel — active cache-probe exfiltration loop |
+| 132 | `nlp_strings` | ML | String-sequence analysis — obfuscated shellcode strings, dual-use API chains |
 
 </details>
 
@@ -260,13 +271,13 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 |--------|--------|--------|
 | True Positive Rate | ≥ 80% (CI-enforced) | Measured via adversary corpus |
 | False Positive Rate | ≤ 10% (CI-enforced) | Measured against clean firmware baselines |
-| Scan Latency | < 500ms | Per-image, full 121-detector sweep |
+| Scan Latency | < 500ms | Per-image, full 132-detector sweep |
 
 ---
 
 ### 3. Barzakh Adversary — Red-Team Payload Generator (Rust)
 
-**Standalone binary: `barzakh-adversary`** | **116 payload generators** that produce realistic tampered firmware images for detection validation:
+**Standalone binary: `barzakh-adversary`** | **127 payload generators** that produce realistic tampered firmware images for detection validation:
 
 ```bash
 # Standalone CLI commands (no cargo required — use the release binary)
@@ -632,7 +643,7 @@ cargo test -p barzakh-adversary -- --ignored corpus_validation
 ./target/release/barzakh-adversary validate --corpus ./corpus # Validate detection rates
 
 # Run a multi-stage attack scenario chain
-./target/release/barzakh-adversary scenario run blacklotus-chain --output ./scenario-out
+./target/release/barzakh-adversary scenario run --name blacklotus-chain --output ./scenario-out
 
 # Benchmark detector robustness under payload mutation
 ./target/release/barzakh-adversary robustness --mutations 25

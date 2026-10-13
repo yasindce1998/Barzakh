@@ -6,7 +6,7 @@
 
 ## 🧠 Overview
 
-Barzakh pairs its 121 deterministic detectors with a lightweight, dependency-free ML layer for problems where fixed heuristics underperform: novel implants that match no known signature, and obfuscated string content that simple pattern rules miss. Everything is implemented in pure Rust — no Python runtime, no external model files beyond the trained JSON.
+Barzakh pairs its 132 deterministic detectors with a lightweight, dependency-free ML layer for problems where fixed heuristics underperform: novel implants that match no known signature, and obfuscated string content that simple pattern rules miss. Everything is implemented in pure Rust — no Python runtime, no external model files beyond the trained JSON.
 
 | Component | Technique | Purpose |
 |-----------|-----------|---------|
@@ -25,11 +25,15 @@ Every image (or corpus sample) is reduced to a fixed feature vector:
 
 | Feature | Description | Bootkit signal |
 |---------|-------------|----------------|
+| Log2 size | Base-2 logarithm of image size | Implanted blobs appended to small firmware |
 | Global entropy | Shannon entropy over all bytes | Packed/encrypted payload blobs |
 | Printable ratio | Fraction of printable ASCII | Implanted shellcode vs. legitimate code/data mix |
-| PE/MZ counts | Occurrences of `MZ`/`PE\0\0` headers | Injected PE/COFF modules at unusual offsets |
-| High-entropy window | Max/mean entropy over sliding 4 KiB windows | Localized encryption that global entropy dilutes |
-| String stats | String count, mean length, charset distribution | Anomalous string densities typical of implants |
+| Zero ratio | Fraction of zero bytes | Missing/erased regions typical of tampering |
+| MZ count | Occurrences of `MZ` headers | Injected PE/COFF modules at unusual offsets |
+| FVH count | UEFI firmware-volume header signatures | Rogue firmware volumes |
+| Max run length | Longest run of identical bytes | Padding/erased regions |
+| High-entropy window | Max/mean entropy over sliding windows | Localized encryption that global entropy dilutes |
+| String count | Extracted ASCII strings | Anomalous string densities typical of implants |
 
 Features feed both the isolation forest and the logistic-regression classifier.
 
@@ -120,14 +124,16 @@ barzakh-scanner ml evaluate --corpus DIR --model model.json
 ```
 
 ```text
-Corpus:        128 samples (64 malicious, 64 clean)
-Isolation forest:  TPR 0.94  FPR 0.03
-Logistic regression: TPR 0.97  FPR 0.02  AUC 0.99
+Corpus:        255 samples (128 malicious, 127 clean)
+Isolation forest:  TPR 0.62  FPR 0.01
+Logistic regression: TPR 0.86  FPR 0.00  AUC 0.99
 Confusion matrix (classifier):
               predicted malicious  predicted benign
-  actual malicious        62                  2
-  actual benign            1                 63
+  actual malicious        110                 18
+  actual benign             0                127
 ```
+
+(Numbers from the bundled corpus generator; retrain on your own firmware corpus for deployment-relevant metrics.)
 
 Retrain whenever the corpus grows — the adversary's payload generators evolve alongside detectors (see UC-O5 in [USECASES.md](USECASES.md)).
 
@@ -142,32 +148,32 @@ Retrain whenever the corpus grows — the adversary's payload generators evolve 
   "format": "barzakh-ml-model",
   "version": 1,
   "trained_at": "2026-10-13T09:00:00Z",
-  "features": ["global_entropy", "printable_ratio", "pe_count", "mz_count",
-               "high_entropy_window_max", "high_entropy_window_mean",
-               "string_count", "string_mean_length"],
+  "features": ["log2_size", "entropy", "printable_ratio", "zero_ratio", "mz_count",
+               "fvh_count", "max_run_length", "high_entropy_window", "string_count"],
   "isolation_forest": {
-    "trees": 100,
+    "trees": [/* serialized split/leaf nodes */],
     "subsample_size": 256,
-    "threshold": 0.62,
-    "nodes": [/* serialized split/leaf data */]
+    "normalizer": {/* per-feature min/max scaling */},
+    "feature_ranges": [/* training feature ranges for out-of-range penalties */]
   },
   "logistic_regression": {
-    "learning_rate": 0.1,
-    "iterations": 500,
-    "l2": 0.001,
-    "weights": [1.24, -0.51, 2.03, 0.87, 3.11, 2.45, -0.33, 0.19],
+    "weights": [1.24, -0.51, 2.03, 0.87, 3.11, 2.45, -0.33, 0.19, 1.05],
     "bias": -1.72,
-    "threshold": 0.5
+    "trained_on": 255,
+    "epochs": 500,
+    "final_loss": 0.083
   },
-  "corpus_stats": {"samples": 128, "malicious": 64, "benign": 64}
+  "anomaly_threshold": 0.87,
+  "corpus_stats": {"samples": 255, "malicious": 128, "benign": 127}
 }
 ```
 
 | Field | Purpose |
 |-------|---------|
 | `features` | Ordered feature names — vectors must match at inference time |
-| `isolation_forest` | Serialized trees + anomaly threshold |
-| `logistic_regression` | Fitted weights/bias + classification threshold |
+| `isolation_forest` | Serialized trees, feature normalization, and training ranges |
+| `logistic_regression` | Fitted weights/bias and training metadata |
+| `anomaly_threshold` | Data-driven anomaly cutoff (95th percentile of clean training scores) |
 | `corpus_stats` | Provenance: what the model was trained on |
 
 **Compatibility rule:** the scanner refuses to apply a model whose `features` list differs from the runtime extractor's — retrain after any feature-set change.
