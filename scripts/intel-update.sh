@@ -15,6 +15,14 @@
 #   --feed URL|FILE    Fetch a specific feed (URL or local file path).
 #                      Can be used multiple times. Default: refresh the
 #                      bundled local feed note only.
+#   --stix URL|FILE    Fetch a STIX 2.1 bundle (URL or local file) and
+#                      convert it into a Barzakh IOC feed. Can be used
+#                      multiple times. Requires the barzakh-scanner
+#                      binary (see --scanner).
+#   --scanner PATH     barzakh-scanner binary used for STIX conversion
+#                      (default: $BARZAKH_SCANNER, then
+#                      src/barzakh-scanner-rs/target/release/barzakh-scanner,
+#                      then PATH).
 #   --help             Show this help message
 #
 # FEED FORMAT (JSON):
@@ -41,12 +49,13 @@
 set -euo pipefail
 
 # Script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Default values
 FEED_DIR="$PROJECT_ROOT/intel-feeds"
 FEEDS=()
+STIX_FEEDS=()
 
 # Colors for output
 RED='\033[0;31m'
@@ -88,6 +97,14 @@ parse_args() {
                 ;;
             --feed)
                 FEEDS+=("$2")
+                shift 2
+                ;;
+            --stix)
+                STIX_FEEDS+=("$2")
+                shift 2
+                ;;
+            --scanner)
+                SCANNER="$2"
                 shift 2
                 ;;
             --help)
@@ -160,10 +177,83 @@ PYEOF
     return 0
 }
 
+# Locate the barzakh-scanner binary used for STIX conversion.
+find_scanner() {
+    if [[ -n "${SCANNER:-}" ]]; then
+        echo "$SCANNER"
+        return 0
+    fi
+    if [[ -n "${BARZAKH_SCANNER:-}" ]] && command -v "$BARZAKH_SCANNER" &> /dev/null; then
+        echo "$BARZAKH_SCANNER"
+        return 0
+    fi
+    local local_build="$PROJECT_ROOT/src/barzakh-scanner-rs/target/release/barzakh-scanner"
+    if [[ -x "$local_build" ]]; then
+        echo "$local_build"
+        return 0
+    fi
+    if command -v barzakh-scanner &> /dev/null; then
+        echo "barzakh-scanner"
+        return 0
+    fi
+    return 1
+}
+
+# Fetch a STIX 2.1 bundle (URL or local file), convert it into a Barzakh
+# IOC feed, and validate the result. Returns 0 on success.
+fetch_stix() {
+    local source="$1"
+
+    local scanner
+    if ! scanner="$(find_scanner)"; then
+        log_error "STIX conversion needs the barzakh-scanner binary (not found)."
+        log_error "Build it with: cd src/barzakh-scanner-rs && cargo build -p barzakh-cli --release"
+        log_error "Or point --scanner / BARZAKH_SCANNER at it."
+        return 1
+    fi
+
+    local tmp_bundle="$FEED_DIR/.stix-bundle.tmp.json"
+    if [[ "$source" == http://* || "$source" == https://* ]]; then
+        log_info "Fetching STIX bundle $source"
+        if ! curl --fail --silent --show-error --location \
+                --output "$tmp_bundle" "$source"; then
+            rm -f "$tmp_bundle"
+            log_error "STIX bundle download failed: $source"
+            return 1
+        fi
+    else
+        if [[ ! -f "$source" ]]; then
+            log_error "STIX bundle not found: $source"
+            return 1
+        fi
+        cp "$source" "$tmp_bundle"
+    fi
+
+    local base
+    base="$(basename "${source%%\?*}")"
+    base="${base%.json}"
+    local dest="$FEED_DIR/stix-${base}.json"
+
+    log_info "Converting STIX bundle with $scanner"
+    if ! "$scanner" intel stix --input "$tmp_bundle" --output "$dest" \
+            --name "stix-${base}"; then
+        rm -f "$tmp_bundle" "$dest"
+        log_error "STIX conversion failed: $source"
+        return 1
+    fi
+    rm -f "$tmp_bundle"
+
+    if ! validate_feed "$dest"; then
+        return 1
+    fi
+
+    log_success "STIX feed OK: $dest"
+    return 0
+}
+
 # Fetch a single feed (URL or local file) into the feed directory.
 # Returns 0 on success, 1 on failure.
-fetch_feed() {
-    local source="$1"
+fetch_feed() {    local source="$1"
     local dest
 
     if [[ "$source" == http://* || "$source" == https://* ]]; then
@@ -216,7 +306,15 @@ main() {
     local failures=0
     local fetched=0
 
-    if [[ ${#FEEDS[@]} -eq 0 ]]; then
+    for feed in "${STIX_FEEDS[@]}"; do
+        if fetch_stix "$feed"; then
+            fetched=$((fetched + 1))
+        else
+            failures=$((failures + 1))
+        fi
+    done
+
+    if [[ ${#FEEDS[@]} -eq 0 && ${#STIX_FEEDS[@]} -eq 0 ]]; then
         log_info "No --feed given. Default: using the bundled local feed note."
         cat > "$FEED_DIR/README.txt" <<EOF
 Barzakh IOC feeds

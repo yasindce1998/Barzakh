@@ -372,6 +372,18 @@ enum IntelCommands {
         #[arg(short, long)]
         target: PathBuf,
     },
+    /// Convert a STIX 2.1 bundle into a Barzakh IOC feed
+    Stix {
+        /// STIX 2.1 bundle (JSON file)
+        #[arg(short, long)]
+        input: PathBuf,
+        /// Output path for the converted IOC feed
+        #[arg(short, long, default_value = "stix-feed.json")]
+        output: PathBuf,
+        /// Feed name recorded in the output
+        #[arg(long, default_value = "stix")]
+        name: String,
+    },
 }
 
 // ─── ML ──────────────────────────────────────────────────────────────────────
@@ -1374,6 +1386,44 @@ fn cmd_intel(command: IntelCommands) -> Result<()> {
                 })
                 .collect();
             println!("{}", Table::new(&rows));
+        }
+        IntelCommands::Stix {
+            input,
+            output,
+            name,
+        } => {
+            println!(
+                "{} Converting STIX bundle {}",
+                "▶".cyan().bold(),
+                input.display()
+            );
+            let bundle = barzakh_intel::stix::StixBundle::load(&input)?;
+            let (feed, report) = bundle.convert(&name);
+            if feed.iocs.is_empty() {
+                println!(
+                    "{} No firmware-relevant indicators ({} indicators, {} unsupported clauses)",
+                    "○".yellow(),
+                    report.indicators,
+                    report.clauses_skipped
+                );
+            }
+            feed.save(&output)?;
+            println!(
+                "{} IOC feed written to {} — {} IOCs from {} indicators \
+                 ({} clauses converted, {} skipped, {} family attributions)",
+                "✓".green().bold(),
+                output.display(),
+                report.produced,
+                report.indicators,
+                report.clauses_converted,
+                report.clauses_skipped,
+                report.families_resolved
+            );
+            println!(
+                "{} Scan with: barzakh-scanner scan --target fw.bin --ioc-feed {}",
+                "→".cyan(),
+                output.display()
+            );
         }
     }
     Ok(())

@@ -1,6 +1,6 @@
 # Barzakh: Threat Intelligence
 
-> **Last Updated:** 2026-10-13 | **Applies to:** intel detectors, IOC feeds, YARA-subset rules, MISP/MITRE export
+> **Last Updated:** 2026-10-14 | **Applies to:** intel detectors, IOC feeds, STIX 2.1 ingestion, YARA-subset rules, MISP/MITRE export
 
 ---
 
@@ -75,6 +75,41 @@ The project ships a starter feed at `intel-feeds/barzakh-default.json` covering 
 ```
 
 `intel-update.sh` validates every feed is JSON with a `name` and an `iocs` array before installing it into `--dir` (default `./intel-feeds`).
+
+### STIX 2.1 ingestion
+
+Public and government feeds (CISA, MISP exports, TAXII collections)
+publish **STIX 2.1 bundles**. Barzakh converts the firmware-relevant
+indicators directly into its native IOC feed format:
+
+```bash
+# Convert a bundle (file or URL) into intel-feeds/:
+./scripts/intel-update.sh --stix https://example.com/stix-bundle.json
+
+# Or standalone via the CLI:
+barzakh-scanner intel stix --input bundle.json --output feed.json --name csa
+# ▶ IOC feed written to feed.json — 12 IOCs from 12 indicators
+#   (12 clauses converted, 3 skipped, 9 family attributions)
+```
+
+Converted feeds are consumed exactly like native ones:
+`barzakh-scanner scan --target fw.bin --ioc-feed feed.json`.
+
+Supported pattern clauses:
+
+| STIX pattern | Becomes |
+|--------------|---------|
+| `[file:hashes.'SHA-256' = '<hex>']` | SHA-256 hash IOC |
+| `[file:name = '<name>']` | ASCII string-pattern IOC |
+| other paths / hash types | counted and skipped |
+
+Family attribution follows `relationship_type: "indicates"` edges from
+indicators to `malware` objects, so findings read *"Threat-intel match:
+LoJax"* rather than an anonymous family. Unsupported clauses (MD5/SHA-1
+hashes, process or network indicators) are reported in the conversion
+summary — nothing fails silently. `intel-update.sh --stix` locates the
+scanner binary via `--scanner`, `$BARZAKH_SCANNER`, the local build
+tree, or `PATH`.
 
 ---
 
