@@ -71,10 +71,20 @@ impl MicrocodeInjectionDetector {
                 let date = read_u32(offset + 8);
                 let processor_signature = read_u32(offset + 12);
                 let _checksum = read_u32(offset + 16);
-                let _loader_revision = read_u32(offset + 20);
+                let loader_revision = read_u32(offset + 20);
                 let _processor_flags = read_u32(offset + 24);
                 let data_size = read_u32(offset + 28);
                 let total_size = read_u32(offset + 32);
+
+                // Structural gate: every real Intel MCU header carries
+                // loader_revision == 1. `01 00 00 00` alone is the most
+                // common u32 in binary data, so requiring the loader
+                // revision keeps ordinary firmware bytes from masquerading
+                // as microcode headers.
+                if loader_revision != 1 {
+                    offset += INTEL_MCU_HEADER_SIZE;
+                    continue;
+                }
 
                 // Validate: total_size should equal data_size + 48
                 let expected_total = data_size.saturating_add(INTEL_MCU_HEADER_SIZE as u32);
@@ -151,16 +161,28 @@ impl MicrocodeInjectionDetector {
                     continue;
                 }
 
-                let suspicious_size = table_size > AMD_MCU_MAX_TABLE_SIZE;
+                // Structural gate: a real AMD equivalence table has 16-byte
+                // entries, a sane size, at least two entries with real
+                // (non-zero) processor IDs, and a null terminator entry.
+                // Four zero bytes followed by a large u32 occur constantly
+                // in firmware padding; only table-shaped candidates are
+                // worth analyzing.
+                let entry_size = 16usize;
+                if !(table_size as usize).is_multiple_of(entry_size)
+                    || table_size as usize > AMD_MCU_MAX_TABLE_SIZE as usize + entry_size
+                {
+                    continue;
+                }
+                let table_len = table_size as usize;
+                if i + 8 + table_len > data.len() {
+                    continue;
+                }
+                let table_data = &data[i + 8..i + 8 + table_len];
 
-                // Check entries within the table for processor_id==0 but equiv_id!=0
-                // Each entry is 10 bytes: processor_id(u32), patch_id(u32), equiv_id(u16)
-                let table_end = (i + 8 + table_size as usize).min(data.len());
-                let table_data = &data[(i + 8).min(data.len())..table_end];
-
+                let mut nonzero_entries = 0usize;
                 let mut null_proc_nonzero_equiv = false;
                 let mut entry_off = 0usize;
-                while entry_off + 10 <= table_data.len() {
+                while entry_off + entry_size <= table_data.len() {
                     let proc_id = u32::from_le_bytes([
                         table_data[entry_off],
                         table_data[entry_off + 1],
@@ -171,36 +193,48 @@ impl MicrocodeInjectionDetector {
                         u16::from_le_bytes([table_data[entry_off + 8], table_data[entry_off + 9]]);
                     if proc_id == 0 && equiv_id != 0 {
                         null_proc_nonzero_equiv = true;
-                        break;
                     }
-                    entry_off += 10;
+                    // Real AMD processor signatures have a zero top byte
+                    // and populated family/model bits (e.g. 0x00800F12);
+                    // equivalence IDs are small. Noise tables carry tiny
+                    // or scattered values.
+                    if proc_id != 0
+                        && (proc_id >> 24) == 0
+                        && (proc_id & 0x00F0_0000) != 0
+                        && (equiv_id >> 8) == 0
+                    {
+                        nonzero_entries += 1;
+                    }
+                    entry_off += entry_size;
                 }
 
-                if suspicious_size || null_proc_nonzero_equiv {
-                    let reason = if suspicious_size {
-                        format!("table_size 0x{:X} exceeds 0x2000", table_size)
-                    } else {
-                        "entry has processor_id=0 with non-zero equiv_id".to_string()
-                    };
+                // Terminator: the final entry must be null.
+                let terminator_ok = table_data[table_len - entry_size..].iter().all(|&b| b == 0);
 
+                if nonzero_entries < 2 || !terminator_ok {
+                    continue;
+                }
+
+                if null_proc_nonzero_equiv {
                     findings.push(
                         Finding::new(
                             "microcode_injection",
                             Severity::High,
                             "Suspicious AMD microcode equivalence table",
                             &format!(
-                                "AMD microcode container at offset 0x{:08X} has anomalous \
-                                 equivalence table: {}. This may indicate a tampered or injected \
-                                 AMD CPU microcode update.",
-                                i, reason
+                                "AMD microcode container at offset 0x{:08X} has an anomalous \
+                                 equivalence table: entry has processor_id=0 with non-zero \
+                                 equiv_id. This may indicate a tampered or injected AMD CPU \
+                                 microcode update.",
+                                i
                             ),
                         )
                         .with_confidence(0.80)
                         .with_details(serde_json::json!({
                             "offset": format!("0x{:08X}", i),
                             "table_size": format!("0x{:X}", table_size),
-                            "suspicious_size": suspicious_size,
-                            "null_proc_nonzero_equiv": null_proc_nonzero_equiv,
+                            "suspicious_size": false,
+                            "null_proc_nonzero_equiv": true,
                         }))
                         .with_recommendation(
                             "Validate AMD microcode containers against AMD vendor signatures. \
@@ -215,56 +249,86 @@ impl MicrocodeInjectionDetector {
     }
 
     /// Detect MCU magic or "microcode" string outside of standard FIT-table regions.
+    /// Look for structurally valid Intel MCU blobs that are not referenced
+    /// by a Firmware Interface Table — microcode living outside the FIT
+    /// capsule. The blob must checksum correctly (sum of dwords over
+    /// total_size == 0): only a genuinely well-formed microcode image is
+    /// worth reporting as an out-of-capsule implant, and noise byte
+    /// sequences never satisfy the checksum. (Debug strings containing
+    /// "microcode" are not references and are ignored.)
     fn check_unexpected_microcode_location(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let needle_str = b"microcode";
 
-        // Collect string occurrences
-        for i in 0..data.len().saturating_sub(needle_str.len()) {
-            let window = &data[i..i + needle_str.len()];
-            let matched_str = window.eq_ignore_ascii_case(needle_str);
+        let mut offset = 0usize;
+        while offset + INTEL_MCU_HEADER_SIZE <= data.len() {
+            if data[offset..offset + 4] == INTEL_MCU_MAGIC {
+                let read_u32 = |o: usize| -> u32 {
+                    u32::from_le_bytes([data[o], data[o + 1], data[o + 2], data[o + 3]])
+                };
 
-            // Also match Intel MCU magic at non-48-byte-aligned positions
-            let matched_mcu = i % INTEL_MCU_HEADER_SIZE != 0
-                && i + 4 <= data.len()
-                && data[i..i + 4] == INTEL_MCU_MAGIC;
+                let date = read_u32(offset + 8);
+                let loader_revision = read_u32(offset + 20);
+                let data_size = read_u32(offset + 28);
+                let total_size = read_u32(offset + 32);
 
-            if !matched_str && !matched_mcu {
-                continue;
+                let expected_total = data_size.saturating_add(INTEL_MCU_HEADER_SIZE as u32);
+                let structurally_valid = loader_revision == 1
+                    && Self::is_valid_bcd_date(date)
+                    && data_size <= INTEL_MCU_MAX_DATA_SIZE
+                    && total_size == expected_total
+                    && total_size > 0
+                    && offset + total_size as usize <= data.len();
+
+                // Checksum: sum of all dwords over the image must be zero.
+                let checksum_ok = structurally_valid && {
+                    let mut sum: u32 = 0;
+                    let end = offset + total_size as usize;
+                    let mut p = offset;
+                    while p + 4 <= end {
+                        sum = sum.wrapping_add(read_u32(p));
+                        p += 4;
+                    }
+                    sum == 0
+                };
+
+                if checksum_ok {
+                    // Check whether a FIT table signature exists within 4KB before this offset
+                    let search_start = offset.saturating_sub(FIT_SEARCH_WINDOW);
+                    let preceding = &data[search_start..offset];
+                    let fit_present = preceding.windows(FIT_MAGIC.len()).any(|w| w == FIT_MAGIC);
+
+                    if !fit_present {
+                        findings.push(
+                            Finding::new(
+                                "microcode_injection",
+                                Severity::High,
+                                "Microcode blob outside expected firmware region",
+                                &format!(
+                                    "Found a checksum-valid Intel MCU image at offset \
+                                     0x{:08X} without a preceding FIT table signature within \
+                                     4 KB. Legitimate microcode updates are referenced via \
+                                     the Firmware Interface Table; orphaned blobs suggest \
+                                     injection outside the update capsule.",
+                                    offset
+                                ),
+                            )
+                            .with_confidence(0.75)
+                            .with_details(serde_json::json!({
+                                "offset": format!("0x{:08X}", offset),
+                                "match_type": "mcu_blob",
+                                "total_size": format!("0x{:X}", total_size),
+                                "fit_signature_found_nearby": false,
+                            }))
+                            .with_recommendation(
+                                "Inspect the firmware image for MCU blobs outside the standard \
+                                 FIT-referenced update capsule and compare against a known-good baseline.",
+                            ),
+                        );
+                    }
+                }
             }
 
-            // Check whether a FIT table signature exists within 4KB before this offset
-            let search_start = i.saturating_sub(FIT_SEARCH_WINDOW);
-            let preceding = &data[search_start..i];
-            let fit_present = preceding.windows(FIT_MAGIC.len()).any(|w| w == FIT_MAGIC);
-
-            if !fit_present {
-                let match_type = if matched_str { "string" } else { "MCU magic" };
-                findings.push(
-                    Finding::new(
-                        "microcode_injection",
-                        Severity::High,
-                        "Microcode reference outside expected firmware region",
-                        &format!(
-                            "Found microcode {} at offset 0x{:08X} without a preceding FIT \
-                             table signature within 4 KB. Legitimate microcode updates are \
-                             referenced via the Firmware Interface Table; orphaned references \
-                             suggest injection outside the update capsule.",
-                            match_type, i
-                        ),
-                    )
-                    .with_confidence(0.75)
-                    .with_details(serde_json::json!({
-                        "offset": format!("0x{:08X}", i),
-                        "match_type": match_type,
-                        "fit_signature_found_nearby": false,
-                    }))
-                    .with_recommendation(
-                        "Inspect the firmware image for MCU blobs outside the standard \
-                         FIT-referenced update capsule and compare against a known-good baseline.",
-                    ),
-                );
-            }
+            offset += INTEL_MCU_HEADER_SIZE;
         }
 
         findings

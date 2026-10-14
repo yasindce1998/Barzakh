@@ -12,7 +12,8 @@ const BOOTKIT_SIGNATURES: &[&[u8]] = &[
     b"MosaicRegressor",
     b"CosmicStrand",
     b"MoonBounce",
-    b"\xEB\xFE",         // infinite loop (jmp $)
+    // Note: `EB FE` (jmp $) is deliberately NOT a signature — hang loops
+    // are idiomatic in legitimate firmware (assert/init-failure paths).
     b"\x48\xB8UEFI_BK!", // custom marker
 ];
 
@@ -146,8 +147,7 @@ impl Detector for MemoryDetector {
                 3 => "MosaicRegressor",
                 4 => "CosmicStrand",
                 5 => "MoonBounce",
-                6 => "Infinite loop (jmp $)",
-                7 => "Custom bootkit marker",
+                6 => "Custom bootkit marker",
                 _ => "Unknown",
             };
 

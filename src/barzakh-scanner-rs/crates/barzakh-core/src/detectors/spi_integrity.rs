@@ -28,9 +28,26 @@ impl SpiIntegrityDetector {
         let mut findings = Vec::new();
 
         // Intel Flash Descriptor signature at offset 0x10
-        if data.len() >= 0x14 {
+        if data.len() >= 0x18 {
             let descriptor_sig = u32::from_le_bytes(data[0x10..0x14].try_into().unwrap_or([0; 4]));
-            if descriptor_sig != 0x0FF0A55A {
+            // Only judge the signature when the image carries flash
+            // descriptor *structure*: FLMAP0 at 0x14 with plausible
+            // component counts. Code-only firmware images (OVMF_CODE,
+            // capsules, EFI binaries) legitimately have no descriptor at
+            // all — a missing descriptor is not corruption.
+            let flmap0 = u32::from_le_bytes(data[0x14..0x18].try_into().unwrap_or([0; 4]));
+            let nc = (flmap0 >> 8) & 0xFF; // number of flash components
+            let nr = (flmap0 >> 24) & 0x07; // number of regions
+            let fcba = flmap0 & 0xFF; // component base (dword units)
+            let frba = (flmap0 >> 16) & 0xFF; // region base (dword units)
+            let has_descriptor_structure = flmap0 != 0
+                && flmap0 != 0xFFFF_FFFF
+                && nc <= 2
+                && nr <= 3
+                && fcba <= 0x3F
+                && frba <= 0x3F;
+
+            if has_descriptor_structure && descriptor_sig != 0x0FF0A55A {
                 findings.push(
                     Finding::new(
                         "spi_integrity",

@@ -35,6 +35,11 @@ impl DxeDispatcherDetector {
         let mut stack_depth: i32 = 0;
         let mut guid_count = 0;
         let mut has_sor = false;
+        // Number of complete PUSH+GUID pairs parsed so far: an invalid
+        // opcode is only meaningful after the expression has demonstrated
+        // that it is a real dependency (random `xx xx xx 13` section-like
+        // bytes parse zero pushes before stumbling on a bad opcode).
+        let mut completed_pushes = 0usize;
 
         while pos < data.len() {
             let opcode = data[pos];
@@ -46,6 +51,7 @@ impl DxeDispatcherDetector {
                     stack_depth += 1;
                     guid_count += 1;
                     pos += 17; // opcode + 16-byte GUID
+                    completed_pushes += 1;
                 }
                 EFI_DEP_AND | EFI_DEP_OR => {
                     stack_depth -= 1;
@@ -66,6 +72,12 @@ impl DxeDispatcherDetector {
                     pos += 1;
                 }
                 _ => {
+                    // An invalid opcode inside an expression that has not
+                    // yet parsed real dependency structure is noise, not a
+                    // tampered depex.
+                    if completed_pushes < 2 {
+                        break;
+                    }
                     findings.push(
                         Finding::new(
                             "dxe_dispatcher",

@@ -57,14 +57,21 @@ impl Payload for RowhammerTrrBypassPayload {
         data[base2 + 14] = 0xFF;
         data[base2 + 15] = 0xFF;
 
-        // Trigger check_refresh_suppression: "tREFI" string + PCI config high value
+        // Trigger check_refresh_suppression: "tREFI" string + an extended
+        // tREFI value written through the PCI config data port (0xCFC).
+        // The detector requires the memory-controller write to carry real
+        // PCI config port context: MOV DX, 0xCFC + OUT DX, EAX around the
+        // 0x3E timing-offset value.
         let refi_offset = 0x800;
         data[refi_offset..refi_offset + 5].copy_from_slice(b"tREFI");
-        // PCI config space offset 0x3E with value >= 0x3000
         let pci_offset = refi_offset + 32;
-        data[pci_offset] = 0x3E; // PCI config offset
-        data[pci_offset + 1] = 0x00;
-        data[pci_offset + 2] = 0x30; // value high byte (0x3000 LE = 0x00, 0x30)
+        let pci_write: [u8; 13] = [
+            0x66, 0xBA, 0xFC, 0xC7, // MOV DX, 0xCFC (PCI config data port)
+            0xB8, 0x00, 0x30, 0x00, 0x00, // MOV EAX, 0x3000 (extended tREFI)
+            0xEF, // OUT DX, EAX
+            0x3E, 0x00, 0x30, // DDR timing offset 0x3E, value 0x3000 LE
+        ];
+        data[pci_offset..pci_offset + pci_write.len()].copy_from_slice(&pci_write);
 
         // Also place "REFRESH" string
         let refresh_offset = refi_offset + 64;

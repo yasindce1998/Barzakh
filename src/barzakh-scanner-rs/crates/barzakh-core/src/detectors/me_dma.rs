@@ -38,17 +38,31 @@ impl MeDmaDetector {
             // Parse length (little-endian u32)
             let length = u32::from_le_bytes(data[i + 16..i + 20].try_into().unwrap_or([0; 4]));
 
-            // Check if either address is in kernel space
-            let src_in_kernel = src_addr >= KERNEL_SPACE_MIN && src_addr != u64::MAX;
-            let dst_in_kernel = dst_addr >= KERNEL_SPACE_MIN && dst_addr != u64::MAX;
+            // Check if either address is in kernel space. DMA descriptors
+            // target page-aligned buffers: unaligned "addresses" are byte
+            // sequences (negative branch displacements, 0xFF runs) that
+            // merely look like kernel-space pointers.
+            let src_in_kernel =
+                src_addr >= KERNEL_SPACE_MIN && src_addr != u64::MAX && (src_addr & 0xFFF) == 0;
+            let dst_in_kernel =
+                dst_addr >= KERNEL_SPACE_MIN && dst_addr != u64::MAX && (dst_addr & 0xFFF) == 0;
 
-            // Both addresses must be non-zero and length must be reasonable
+            // Both addresses must be non-zero and plausible: either a
+            // physical address (< 2^48) or a page-aligned kernel-space
+            // pointer. Other values are byte sequences masquerading as
+            // descriptors.
+            let src_plausible = src_addr != 0 && (src_addr < (1u64 << 48) || src_in_kernel);
+            let dst_plausible = dst_addr != 0 && (dst_addr < (1u64 << 48) || dst_in_kernel);
+            // Real DMA descriptors move page-multiples of memory and carry
+            // small status words; random byte runs do not.
+            let status = u32::from_le_bytes(data[i + 20..i + 24].try_into().unwrap_or([0; 4]));
+            let length_reasonable =
+                length > 0 && length < 0x1000000 && (length & 0xFFF) == 0 && status < 0x100;
+
             if (src_in_kernel || dst_in_kernel)
-                && src_addr != 0
-                && dst_addr != 0
-                && length > 0
-                && length < 0x1000000
-            // < 16MB - reasonable DMA transfer
+                && src_plausible
+                && dst_plausible
+                && length_reasonable
             {
                 let target_desc = if src_in_kernel && dst_in_kernel {
                     "both source and destination in kernel space"

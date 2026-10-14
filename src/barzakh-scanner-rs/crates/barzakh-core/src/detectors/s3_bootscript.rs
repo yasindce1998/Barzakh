@@ -22,6 +22,42 @@ impl S3BootscriptDetector {
         Self
     }
 
+    /// True when at least two well-formed script entries chain exactly
+    /// into the entry at `dispatch_off` (each predecessor's length field
+    /// advances the parse onto the next opcode).
+    fn has_chained_predecessors(&self, data: &[u8], dispatch_off: usize) -> bool {
+        const VALID_OPCODES: [u8; 3] =
+            [S3_MEM_WRITE_OPCODE, S3_IO_WRITE_OPCODE, S3_PCI_WRITE_OPCODE];
+        const MAX_LOOKBACK: usize = 128;
+        const MIN_ENTRY_LEN: usize = 2;
+        const MAX_ENTRY_LEN: usize = 64;
+        const MIN_PREDECESSORS: usize = 2;
+
+        let start_min = dispatch_off.saturating_sub(MAX_LOOKBACK);
+        for start in start_min..dispatch_off {
+            let mut pos = start;
+            let mut chain = 0usize;
+            while pos < dispatch_off {
+                if pos + 2 > data.len() {
+                    break;
+                }
+                if !VALID_OPCODES.contains(&data[pos]) {
+                    break;
+                }
+                let entry_len = data[pos + 1] as usize;
+                if !(MIN_ENTRY_LEN..=MAX_ENTRY_LEN).contains(&entry_len) {
+                    break;
+                }
+                pos += entry_len;
+                chain += 1;
+            }
+            if pos == dispatch_off && chain >= MIN_PREDECESSORS {
+                return true;
+            }
+        }
+        false
+    }
+
     fn check_bootscript_opcodes(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -38,6 +74,16 @@ impl S3BootscriptDetector {
 
                     // Entry point should be a valid address
                     if entry_point > 0x1000 && entry_point < 0xFFFFFFFF_FFFFFFFF {
+                        // Structural gate: an S3 boot script is a chain of
+                        // entries where each entry's length advances the
+                        // parse to the next opcode. A lone `03 0A` byte pair
+                        // is coincidence; require at least two well-formed
+                        // predecessor entries that chain exactly into this
+                        // DISPATCH.
+                        if !self.has_chained_predecessors(data, i) {
+                            continue;
+                        }
+
                         findings.push(
                             Finding::new(
                                 "s3_bootscript",

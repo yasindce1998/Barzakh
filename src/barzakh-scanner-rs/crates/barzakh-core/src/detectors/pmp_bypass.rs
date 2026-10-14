@@ -97,7 +97,9 @@ impl PmpBypassDetector {
         // pmpcfg0=0x3A0, pmpcfg2=0x3A2, pmpaddr0=0x3B0..0x3BF
         let mut pmp_write_sites = Vec::new();
 
-        for i in 0..data.len().saturating_sub(4) {
+        // RISC-V instructions are naturally 4-byte aligned; scanning only
+        // aligned positions removes most random byte-sequence matches.
+        for i in (0..data.len().saturating_sub(4)).step_by(4) {
             let instr = u32::from_le_bytes(data[i..i + 4].try_into().unwrap_or([0; 4]));
 
             // csrw pattern: funct3=001, opcode=1110011, rd=x0
@@ -112,7 +114,13 @@ impl PmpBypassDetector {
             }
         }
 
-        if pmp_write_sites.len() >= 3 {
+        // The sites must form a tight code sequence (a PMP programming
+        // routine), not scattered matches across the image.
+        let has_tight_sequence = pmp_write_sites
+            .windows(3)
+            .any(|w| w[2].0.saturating_sub(w[0].0) <= 32);
+
+        if pmp_write_sites.len() >= 3 && has_tight_sequence {
             findings.push(
                 Finding::new(
                     "pmp_bypass",

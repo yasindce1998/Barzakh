@@ -5,16 +5,26 @@ use crate::detector::{Detector, DetectorError, Finding, Severity};
 // MSR 0x150 — Intel OC Mailbox (Plundervolt voltage manipulation)
 // Little-endian u16 representation of 0x0150
 const MSR_OC_MAILBOX_LO: u8 = 0x50;
+#[allow(dead_code)]
 const MSR_OC_MAILBOX_HI: u8 = 0x01;
 
 // MSR 0x199 — IA32_PERF_CTL (DVFS frequency/voltage control)
 // Little-endian u16 representation of 0x0199
+#[allow(dead_code)]
 const MSR_PERF_CTL_LO: u8 = 0x99;
-const MSR_PERF_CTL_HI: u8 = 0x01;
 
 // x86 WRMSR opcode (documented for reference; bytes are matched inline for position context)
 #[allow(dead_code)]
 const WRMSR: &[u8] = &[0x0F, 0x30];
+
+/// `MOV ECX, imm32` opcode — the canonical way MSR addresses reach ECX
+/// before WRMSR. Requiring the full `B9 <msr-lo> <msr-hi> 00 00` load
+/// (instead of any `50 01` byte pair nearby) keeps ordinary WRMSR-heavy
+/// firmware code from matching: random byte pairs are ubiquitous, the
+/// 5-byte immediate load for a specific MSR is not.
+const MOV_ECX_IMM32: u8 = 0xB9;
+const MSR_IMM_HIGH: u8 = 0x01;
+const MSR_IMM_PAD: u8 = 0x00;
 
 // SGX instructions
 const ENCLS: &[u8] = &[0x0F, 0x01, 0xCF];
@@ -23,6 +33,14 @@ const ENCLU: &[u8] = &[0x0F, 0x01, 0xD7];
 // Common ARM PMIC I2C addresses (CLKscrew)
 const PMIC_I2C_ADDR_60: u8 = 0x60;
 const PMIC_I2C_ADDR_62: u8 = 0x62;
+
+/// PMIC transactions must cluster within this window to form a burst.
+const PMIC_BURST_WINDOW: usize = 128;
+/// Minimum transactions per burst.
+const PMIC_BURST_MIN_TRANSACTIONS: usize = 4;
+/// Value bytes within a burst must stay inside this band (small nudges
+/// around an operating point, not unrelated scattered writes).
+const PMIC_VALUE_BAND: u8 = 0x40;
 
 // Maximum negative voltage offset representable in the OC Mailbox payload
 // Values with the high byte >= 0xF8 in a 16-bit signed representation indicate
@@ -42,6 +60,23 @@ impl VoltageGlitchDetector {
         Self
     }
 
+    /// True when the bytes preceding a WRMSR at `wrmsr_off` contain the
+    /// canonical `MOV ECX, <msr>` immediate load (`B9 lo 01 00 00` for
+    /// MSRs below 0x10000). Real MSR-writing code loads the address this
+    /// way; requiring it separates genuine MSR-targeted WRMSRs from the
+    /// sea of unrelated WRMSRs in ordinary firmware code.
+    fn has_msr_load(&self, data: &[u8], wrmsr_off: usize, msr_lo: u8) -> bool {
+        let scan_start = wrmsr_off.saturating_sub(16);
+        let pre = &data[scan_start..wrmsr_off];
+        pre.windows(5).any(|w| {
+            w[0] == MOV_ECX_IMM32
+                && w[1] == msr_lo
+                && w[2] == MSR_IMM_HIGH
+                && w[3] == MSR_IMM_PAD
+                && w[4] == MSR_IMM_PAD
+        })
+    }
+
     /// Detect MSR 0x150 (OC Mailbox) writes via WRMSR — Plundervolt voltage manipulation.
     /// Also flags occurrences where the voltage offset encoded in the payload exceeds safe ranges.
     fn check_plundervolt_msr(&self, data: &[u8]) -> Vec<Finding> {
@@ -53,13 +88,8 @@ impl VoltageGlitchDetector {
                 continue;
             }
 
-            // Scan the 16 bytes before WRMSR for MSR 0x150 load pattern
-            let scan_start = i.saturating_sub(16);
-            let pre_wrmsr = &data[scan_start..i];
-
-            let has_msr_150 = pre_wrmsr
-                .windows(2)
-                .any(|w| w[0] == MSR_OC_MAILBOX_LO && w[1] == MSR_OC_MAILBOX_HI);
+            // Require the canonical `MOV ECX, 0x150` load before the WRMSR
+            let has_msr_150 = self.has_msr_load(data, i, MSR_OC_MAILBOX_LO);
 
             if !has_msr_150 {
                 continue;
@@ -67,6 +97,8 @@ impl VoltageGlitchDetector {
 
             // Check whether the voltage offset bytes (appearing after the MSR address load)
             // represent a large negative offset (potential unsafe undervolt).
+            let scan_start = i.saturating_sub(16);
+            let pre_wrmsr = &data[scan_start..i];
             let unsafe_offset = pre_wrmsr
                 .windows(2)
                 .any(|w| w[1] >= UNSAFE_VOLTAGE_OFFSET_THRESHOLD);
@@ -127,15 +159,11 @@ impl VoltageGlitchDetector {
         // Collect all offsets where MSR 0x150 WRMSR pairs occur
         let mut wrmsr_offsets: Vec<usize> = Vec::new();
         for i in 0..data.len().saturating_sub(1) {
-            if data[i] == 0x0F && data[i + 1] == 0x30 {
-                let scan_start = i.saturating_sub(16);
-                let pre = &data[scan_start..i];
-                if pre
-                    .windows(2)
-                    .any(|w| w[0] == MSR_OC_MAILBOX_LO && w[1] == MSR_OC_MAILBOX_HI)
-                {
-                    wrmsr_offsets.push(i);
-                }
+            if data[i] == 0x0F
+                && data[i + 1] == 0x30
+                && self.has_msr_load(data, i, MSR_OC_MAILBOX_LO)
+            {
+                wrmsr_offsets.push(i);
             }
         }
 
@@ -207,16 +235,15 @@ impl VoltageGlitchDetector {
                 continue;
             }
 
-            let scan_start = i.saturating_sub(16);
-            let pre_wrmsr = &data[scan_start..i];
-
-            let has_msr_199 = pre_wrmsr
-                .windows(2)
-                .any(|w| w[0] == MSR_PERF_CTL_LO && w[1] == MSR_PERF_CTL_HI);
+            // Require the canonical `MOV ECX, 0x199` load before the WRMSR
+            let has_msr_199 = self.has_msr_load(data, i, MSR_PERF_CTL_LO);
 
             if !has_msr_199 {
                 continue;
             }
+
+            let scan_start = i.saturating_sub(16);
+            let pre_wrmsr = &data[scan_start..i];
 
             // Extreme frequency ratio values: bytes directly after the MSR address load
             // that represent a P-state ratio above 0x3F (63) or below 0x08 are suspicious.
@@ -255,51 +282,79 @@ impl VoltageGlitchDetector {
         }
 
         // --- ARM: I2C PMIC write patterns (CLKscrew) ---
-        // Look for PMIC I2C addresses 0x60 / 0x62 with an adjacent write command byte
-        // (I2C write transactions typically carry direction in the LSB of the address byte,
-        // so 0x60 -> write=0xC0, 0x62 -> write=0xC4; but raw address bytes also appear
-        // in register-level PMIC drivers).
-        for i in 0..data.len().saturating_sub(3) {
-            let addr = data[i];
-            if addr != PMIC_I2C_ADDR_60 && addr != PMIC_I2C_ADDR_62 {
-                continue;
+        // A bare (addr, reg, val) byte triple matches constantly in real
+        // firmware volumes, so a finding requires a *burst*: several PMIC
+        // transactions to the same I2C address within a short window, with
+        // value bytes confined to a narrow band — the signature of an
+        // attacker nudging a voltage operating point, not of scattered
+        // bytes.
+        let pmic_transactions: Vec<(usize, u8, u8)> = (0..data.len().saturating_sub(3))
+            .filter(|&i| {
+                let addr = data[i];
+                let reg = data[i + 1];
+                let val = data[i + 2];
+                (addr == PMIC_I2C_ADDR_60 || addr == PMIC_I2C_ADDR_62) && reg <= 0x7F && val != 0x00
+            })
+            .map(|i| (i, data[i], data[i + 2]))
+            .collect();
+
+        let mut i = 0;
+        while i < pmic_transactions.len() {
+            let (base_off, addr, _val) = pmic_transactions[i];
+            // Gather the run of transactions to the same address within the
+            // burst window.
+            let mut j = i;
+            let mut vals: Vec<u8> = Vec::new();
+            while j < pmic_transactions.len() {
+                let (off, a, v) = pmic_transactions[j];
+                if a != addr || off - base_off > PMIC_BURST_WINDOW {
+                    break;
+                }
+                vals.push(v);
+                j += 1;
             }
 
-            // Adjacent bytes: expect a register offset followed by a non-zero value byte
-            let reg_byte = data[i + 1];
-            let val_byte = data[i + 2];
-
-            // PMIC voltage / frequency registers are typically in the range 0x00–0x7F
-            // A write command with a value != 0 in a security-sensitive register is flagged.
-            if reg_byte <= 0x7F && val_byte != 0x00 {
-                findings.push(
-                    Finding::new(
-                        "voltage_glitch",
-                        Severity::High,
-                        "ARM PMIC I2C voltage/frequency register write (CLKscrew pattern)",
-                        &format!(
-                            "PMIC I2C address 0x{:02X} at offset 0x{:08X} followed by register \
-                             0x{:02X} write with value 0x{:02X}. This matches the CLKscrew ARM \
-                             DVFS attack pattern where voltage or frequency is manipulated via \
-                             I2C to the PMIC to induce transient faults.",
-                            addr, i, reg_byte, val_byte
+            if vals.len() >= PMIC_BURST_MIN_TRANSACTIONS {
+                let band = *vals.iter().max().unwrap() as u16 - *vals.iter().min().unwrap() as u16;
+                // A CLKscrew-style attack *ramps* the operating point: the
+                // value bytes step monotonically in one direction. Random
+                // bytes that pass the burst/band gates are not ordered.
+                let monotonic =
+                    vals.windows(2).all(|w| w[0] < w[1]) || vals.windows(2).all(|w| w[0] > w[1]);
+                if band <= PMIC_VALUE_BAND as u16 && monotonic {
+                    findings.push(
+                        Finding::new(
+                            "voltage_glitch",
+                            Severity::High,
+                            "ARM PMIC I2C voltage/frequency register write burst (CLKscrew pattern)",
+                            &format!(
+                                "{} PMIC I2C transactions to address 0x{:02X} within {} bytes \
+                                 (starting at offset 0x{:08X}) with values in a 0x{:02X}-wide \
+                                 band. This matches the CLKscrew ARM DVFS attack pattern where \
+                                 voltage or frequency is nudged via I2C to the PMIC to induce \
+                                 transient faults.",
+                                vals.len(), addr, PMIC_BURST_WINDOW, base_off, PMIC_VALUE_BAND
+                            ),
+                        )
+                        .with_confidence(0.70)
+                        .with_details(serde_json::json!({
+                            "offset": format!("0x{:08X}", base_off),
+                            "pmic_i2c_address": format!("0x{:02X}", addr),
+                            "transactions": vals.len(),
+                            "value_band": format!("0x{:02X}", band),
+                            "technique": "CLKscrew ARM DVFS / PMIC I2C manipulation",
+                        }))
+                        .with_recommendation(
+                            "Audit PMIC I2C access control. Restrict kernel drivers from \
+                             performing arbitrary PMIC register writes. Validate DVFS operating \
+                             points against SoC safety margins.",
                         ),
-                    )
-                    .with_confidence(0.70)
-                    .with_details(serde_json::json!({
-                        "offset": format!("0x{:08X}", i),
-                        "pmic_i2c_address": format!("0x{:02X}", addr),
-                        "register": format!("0x{:02X}", reg_byte),
-                        "value": format!("0x{:02X}", val_byte),
-                        "technique": "CLKscrew ARM DVFS / PMIC I2C manipulation",
-                    }))
-                    .with_recommendation(
-                        "Audit PMIC I2C access control. Restrict kernel drivers from \
-                         performing arbitrary PMIC register writes. Validate DVFS operating \
-                         points against SoC safety margins.",
-                    ),
-                );
+                    );
+                    i = j;
+                    continue;
+                }
             }
+            i += 1;
         }
 
         findings

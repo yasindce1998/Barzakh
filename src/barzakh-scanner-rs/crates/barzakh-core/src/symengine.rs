@@ -13,7 +13,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 /// Dangerous sink reachable by a path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SinkKind {
     /// `WRMSR` — model-specific register write (Ring -1 class).

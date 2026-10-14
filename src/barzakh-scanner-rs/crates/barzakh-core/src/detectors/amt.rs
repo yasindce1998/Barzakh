@@ -24,15 +24,19 @@ impl AmtDetector {
         let vendor_id: &[u8] = &[0x86, 0x80]; // 0x8086 little-endian
         let provisioned_state: u8 = 0x03;
 
-        for (i, window) in data.windows(64).enumerate() {
-            if let Some(vendor_pos) = window.windows(vendor_id.len()).position(|w| w == vendor_id) {
-                // Look for provisioning state byte near vendor ID
-                let search_start = vendor_pos;
-                let search_end = window.len();
-                for j in search_start..search_end {
-                    if window[j] == provisioned_state {
+        // Single pass over vendor-ID positions (instead of a 64-byte window
+        // scan per offset, which is O(n*64) on large images). The
+        // provisioning state and the 00:16.3 device marker must appear
+        // within 64 bytes after the vendor ID.
+        let mut i = 0;
+        while i + 2 <= data.len() {
+            if data[i] == vendor_id[0] && data[i + 1] == vendor_id[1] {
+                let end = (i + 64).min(data.len());
+                for j in i..end {
+                    if data[j] == provisioned_state {
                         // Verify context: look for additional AMT indicators
-                        let has_amt_context = window[j..].windows(2).any(|w| w == [0x16, 0x03]); // device 16, function 3
+                        // (device 16, function 3) after the state byte.
+                        let has_amt_context = data[j..end].windows(2).any(|w| w == [0x16, 0x03]);
 
                         if has_amt_context {
                             findings.push(
@@ -44,12 +48,12 @@ impl AmtDetector {
                                         "Found AMT provisioning state (0x03 = fully provisioned) \
                                          near PCI device 00:16.3 config space at offset 0x{:08X}. \
                                          AMT is active and provisioned on this platform.",
-                                        i + j
+                                        j
                                     ),
                                 )
                                 .with_confidence(0.55)
                                 .with_details(serde_json::json!({
-                                    "offset": format!("0x{:08X}", i + j),
+                                    "offset": format!("0x{:08X}", j),
                                     "provisioning_state": "0x03 (fully provisioned)",
                                     "pci_device": "00:16.3",
                                 }))
@@ -62,6 +66,7 @@ impl AmtDetector {
                     }
                 }
             }
+            i += 1;
         }
 
         findings

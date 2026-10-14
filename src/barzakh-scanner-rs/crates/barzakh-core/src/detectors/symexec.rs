@@ -124,6 +124,11 @@ const EXFIL_INDICATORS: &[&[u8]] = &[
     b"HttpProtocol",
 ];
 
+/// Maximum BST-hook findings reported per image. Real x86-64 firmware
+/// contains thousands of memory-write opcodes; even anchored candidates
+/// can cluster, and unbounded reporting is noise, not signal.
+const MAX_BST_HOOK_FINDINGS: usize = 32;
+
 pub struct SymExecDetector;
 
 impl Default for SymExecDetector {
@@ -389,18 +394,22 @@ impl SymExecDetector {
         }
     }
 
-    fn classify_hook_behavior(&self, data: &[u8], blocks: &[BasicBlock]) -> HookBehavior {
-        // Check for persistence indicators in surrounding data
-        let search_region = data;
-
+    /// Classify the behavior of a hook candidate.
+    ///
+    /// `region` is the bytes surrounding the hook candidate (not the whole
+    /// image): behavioral indicators are only meaningful when they sit next
+    /// to the write. Scanning the entire image made every ordinary
+    /// `mov [mem], reg` in real firmware a "persistence hook" because some
+    /// UEFI string table somewhere contains `SetVariable`.
+    fn classify_hook_behavior(&self, region: &[u8], blocks: &[BasicBlock]) -> HookBehavior {
         for pattern in PERSISTENCE_INDICATORS {
-            if search_region.windows(pattern.len()).any(|w| w == *pattern) {
+            if region.windows(pattern.len()).any(|w| w == *pattern) {
                 return HookBehavior::Persistence;
             }
         }
 
         for pattern in EXFIL_INDICATORS {
-            if search_region.windows(pattern.len()).any(|w| w == *pattern) {
+            if region.windows(pattern.len()).any(|w| w == *pattern) {
                 return HookBehavior::DataExfiltration;
             }
         }
@@ -437,10 +446,13 @@ impl SymExecDetector {
     fn find_hook_targets(&self, data: &[u8]) -> Vec<(usize, Vec<u8>)> {
         let mut targets = Vec::new();
 
-        // Look for BST write patterns that indicate hook installation
+        // Look for BST write patterns that indicate hook installation.
+        // The ModRM byte must select a memory destination (`mod != 0b11`):
+        // a pointer overwrite writes to memory, while register-register
+        // forms of these opcodes are ordinary moves in real firmware code.
         for i in 0..data.len().saturating_sub(16) {
             for pattern in BST_WRITE_PATTERNS {
-                if data[i..].starts_with(pattern.bytes) {
+                if data[i..].starts_with(pattern.bytes) && (data[i + 2] & 0xC0) != 0xC0 {
                     let region_end = (i + 256).min(data.len());
                     targets.push((i, data[i..region_end].to_vec()));
                     break;
@@ -457,8 +469,22 @@ impl SymExecDetector {
         let targets = self.find_hook_targets(data);
 
         for (offset, region) in &targets {
+            // Behavioral anchor: the region around the write must contain a
+            // persistence or exfiltration indicator. Memory-write opcodes
+            // alone occur thousands of times per megabyte of ordinary
+            // x86-64 firmware code, so only anchored candidates are worth
+            // decoding. This pre-filter is also what keeps the scan linear:
+            // the code-region analysis only runs for anchored candidates.
+            let anchored = PERSISTENCE_INDICATORS
+                .iter()
+                .chain(EXFIL_INDICATORS.iter())
+                .any(|p| region.windows(p.len()).any(|w| w == *p));
+            if !anchored {
+                continue;
+            }
+
             let blocks = self.analyze_code_region(region, *offset);
-            let behavior = self.classify_hook_behavior(data, &blocks);
+            let behavior = self.classify_hook_behavior(region, &blocks);
 
             if behavior != HookBehavior::Passthrough {
                 findings.push(
@@ -499,6 +525,12 @@ impl SymExecDetector {
                     }),
                 );
             }
+
+            // Bound the reported hook findings per image: an image with
+            // thousands of anchored writes is flooding, not signal.
+            if findings.len() >= MAX_BST_HOOK_FINDINGS {
+                break;
+            }
         }
 
         findings
@@ -507,12 +539,11 @@ impl SymExecDetector {
     fn detect_suspicious_patterns(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        // Look for SMM-related patterns (System Management Mode exploitation)
-        let smm_patterns: &[&[u8]] = &[
-            &[0x0F, 0xAA], // RSM (return from SMM)
-            b"SMRAM",
-            b"SMM_BASE",
-        ];
+        // Look for SMM-related patterns (System Management Mode exploitation).
+        // A bare RSM opcode is deliberately not matched: every legitimate
+        // SMM handler ends with one, so its presence in firmware is normal
+        // (RSM-context anomalies are handled by the smm_timing detector).
+        let smm_patterns: &[&[u8]] = &[b"SMRAM", b"SMM_BASE"];
 
         for pattern in smm_patterns {
             if let Some(pos) = data.windows(pattern.len()).position(|w| w == *pattern) {
@@ -560,21 +591,32 @@ impl SymExecDetector {
         }
 
         let engine = SymEngine::new(SymConfig::default());
-        let mut reported: Vec<(usize, SinkKind)> = Vec::new();
+        let mut reported: std::collections::HashSet<(usize, SinkKind)> =
+            std::collections::HashSet::new();
 
         for &sink_off in &regions {
             // Analyze a window ending at the sink: guards usually precede it.
             let window_start = sink_off.saturating_sub(64);
             let window = &data[window_start..(sink_off + 2).min(data.len())];
+
+            // A meaningful guard requires a CMP the engine models
+            // (`81 /7` or `83 /7`) inside the window: without one, any Jcc
+            // produces a vacuous constraint and port-I/O bytes in ordinary
+            // firmware code flood the report. Skipping those windows keeps
+            // the scan linear without losing guarded-sink signal.
+            let has_modeled_cmp = window
+                .windows(2)
+                .any(|w| matches!(w[0], 0x81 | 0x83) && (w[1] >> 3) & 7 == 7);
+            if !has_modeled_cmp {
+                continue;
+            }
+
             let report = engine.execute(window);
 
             for sink in &report.sinks {
                 // Convert the in-window offset to the image offset.
                 let image_off = window_start + sink.offset;
-                if reported
-                    .iter()
-                    .any(|(o, k)| *o == image_off && *k == sink.kind)
-                {
+                if reported.contains(&(image_off, sink.kind)) {
                     continue;
                 }
                 // Only report sinks that are actually guarded by symbolic
@@ -585,12 +627,11 @@ impl SymExecDetector {
                 }
 
                 let rendered: Vec<String> = sink.conditions.iter().map(|c| c.render()).collect();
-                let severity = if matches!(sink.kind, SinkKind::Wrmsr | SinkKind::Cli) {
-                    Severity::High
-                } else {
-                    Severity::Medium
-                };
-                reported.push((image_off, sink.kind));
+                // Guarded CLI/WRMSR in a firmware *image* is ordinary code
+                // (critical sections, MSR setup); a guarded sink alone is
+                // Medium-confidence context, not a High-severity alarm.
+                let severity = Severity::Medium;
+                reported.insert((image_off, sink.kind));
 
                 findings.push(
                     Finding::new(
