@@ -31,6 +31,13 @@ pub struct AgentConfig {
     /// Optional webhook URL receiving ECS JSON events.
     #[serde(default)]
     pub webhook: Option<String>,
+    /// Shared secret for HMAC-SHA256 webhook signatures. When set, every
+    /// webhook request carries `X-Barzakh-Timestamp` and
+    /// `X-Barzakh-Signature: sha256=<hex>` headers computed over
+    /// `<timestamp>.<body>`; receivers should reject requests older than
+    /// a few minutes or whose signature does not match.
+    #[serde(default)]
+    pub webhook_secret: Option<String>,
     /// History database.
     #[serde(default = "default_db")]
     pub db: PathBuf,
@@ -203,9 +210,8 @@ impl Agent {
         if let Some(webhook) = &self.config.webhook {
             for finding in findings {
                 let event = barzakh_core::reports::render_ecs_event(finding, target, &timestamp);
-                if let Err(e) = ureq::post(webhook)
-                    .timeout(Duration::from_secs(10))
-                    .send_json(ureq::json!(event))
+                if let Err(e) =
+                    deliver_webhook(webhook, self.config.webhook_secret.as_deref(), &event)
                 {
                     tracing::warn!("webhook delivery failed: {e}");
                 }
@@ -235,6 +241,83 @@ impl Agent {
     }
 }
 
+/// Deliver one ECS event to a webhook URL, signing it when a secret is
+/// configured.
+///
+/// Signed requests carry:
+/// - `X-Barzakh-Timestamp: <unix seconds>` — receivers should reject
+///   timestamps outside a small window to defeat replay,
+/// - `X-Barzakh-Signature: sha256=<hex>` — HMAC-SHA256 of
+///   `<timestamp>.<body>` keyed with the shared secret.
+pub fn deliver_webhook(
+    url: &str,
+    secret: Option<&str>,
+    event: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let body = serde_json::to_string(event)?;
+    let mut request = ureq::post(url).timeout(Duration::from_secs(10));
+    if let Some(secret) = secret {
+        let timestamp = chrono::Utc::now().timestamp().max(0).to_string();
+        let signature = webhook_signature(secret, &timestamp, body.as_bytes());
+        request = request
+            .set("X-Barzakh-Timestamp", &timestamp)
+            .set("X-Barzakh-Signature", &format!("sha256={signature}"));
+    }
+    request.send_string(&body)?;
+    Ok(())
+}
+
+/// Hex-encoded HMAC-SHA256 over `<timestamp>.<body>` with `secret`.
+pub fn webhook_signature(secret: &str, timestamp: &str, body: &[u8]) -> String {
+    let mut message = Vec::with_capacity(timestamp.len() + 1 + body.len());
+    message.extend_from_slice(timestamp.as_bytes());
+    message.push(b'.');
+    message.extend_from_slice(body);
+    hex(&hmac_sha256(secret.as_bytes(), &message))
+}
+
+/// HMAC-SHA256 (RFC 2104) built on `sha2`.
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    const BLOCK: usize = 64;
+    let mut key = key.to_vec();
+    if key.len() > BLOCK {
+        key = Sha256::digest(&key).to_vec();
+    }
+    key.resize(BLOCK, 0);
+    let mut ipad = vec![0x36u8; BLOCK];
+    let mut opad = vec![0x5cu8; BLOCK];
+    for i in 0..BLOCK {
+        ipad[i] ^= key[i];
+        opad[i] ^= key[i];
+    }
+    let mut inner = Sha256::new();
+    inner.update(&ipad);
+    inner.update(message);
+    let inner = inner.finalize();
+    let mut outer = Sha256::new();
+    outer.update(&opad);
+    outer.update(inner);
+    outer.finalize().into()
+}
+
+/// Constant-time byte-slice comparison (no early exit on mismatch).
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +341,7 @@ mod tests {
             siem_format: "ecs".to_string(),
             output: dir.join("alerts.jsonl").display().to_string(),
             webhook: None,
+            webhook_secret: None,
             db: dir.join("history.sqlite"),
             targets: vec![dir.join("fw.bin").display().to_string()],
             min_severity: "medium".to_string(),

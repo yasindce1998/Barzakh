@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
-use axum::response::Html;
+use axum::http::{Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -29,7 +30,65 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/adversary/generate", post(generate_payload))
         .route("/api/scenarios", get(list_scenarios))
         .route("/api/schedule", get(list_schedules).post(add_schedule))
+        .layer(middleware::from_fn_with_state(state.clone(), api_key_auth))
         .with_state(state)
+}
+
+/// API-key authentication (Phase 0.3).
+///
+/// When `AppState::api_key` is set, every `/api/*` request (except the
+/// unauthenticated health probe) must present the key either as
+/// `X-API-Key: <key>` or `Authorization: Bearer <key>`. Comparison is
+/// constant-time.
+async fn api_key_auth(
+    State(state): State<Arc<AppState>>,
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let Some(expected) = state.api_key.as_deref() else {
+        // No key configured: authentication is disabled (a warning is
+        // logged at startup).
+        return next.run(request).await;
+    };
+    let path = request.uri().path();
+    if path == "/api/health" {
+        return next.run(request).await;
+    }
+
+    let provided = request
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .or_else(|| {
+            request
+                .headers()
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(str::to_owned)
+        });
+
+    match provided.as_deref() {
+        Some(key) if constant_time_eq(key.as_bytes(), expected.as_bytes()) => {
+            next.run(request).await
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "unauthorized: provide the API key via X-API-Key or Authorization: Bearer",
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Constant-time byte comparison (no early exit on first mismatch).
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 // ─── Basic endpoints ────────────────────────────────────────────────────────
@@ -537,6 +596,7 @@ mod tests {
                 barzakh_store::kb::KnowledgeBase::open(std::path::Path::new(":memory:")).unwrap(),
             ),
             schedules: tokio::sync::Mutex::new(Vec::new()),
+            api_key: None,
             payloads_dir: std::env::temp_dir().join(format!(
                 "barzakh-server-test-payloads-{}",
                 std::process::id()

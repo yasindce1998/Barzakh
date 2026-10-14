@@ -20,6 +20,10 @@ pub struct ServerConfig {
     pub db_path: PathBuf,
     /// Directory where `/api/adversary/generate` materializes payload images.
     pub payloads_dir: PathBuf,
+    /// API key required by every authenticated `/api/*` endpoint
+    /// (`X-API-Key: <key>` or `Authorization: Bearer <key>`). `None`
+    /// disables authentication — the server logs a startup warning.
+    pub api_key: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -28,6 +32,7 @@ impl Default for ServerConfig {
             port: 8420,
             db_path: PathBuf::from("barzakh.db"),
             payloads_dir: PathBuf::from("payloads"),
+            api_key: None,
         }
     }
 }
@@ -50,16 +55,27 @@ pub struct AppState {
     pub kb: Mutex<KnowledgeBase>,
     pub schedules: Mutex<Vec<Schedule>>,
     pub payloads_dir: PathBuf,
+    /// When set, all `/api/*` requests (except `/api/health`) must
+    /// authenticate with this key.
+    pub api_key: Option<String>,
 }
 
 /// Run the server until shutdown.
 pub async fn run_server(config: ServerConfig) -> Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    if config.api_key.is_none() {
+        tracing::warn!(
+            "API authentication is DISABLED: every /api endpoint is reachable \
+             without credentials. Set --api-key or BARZAKH_API_KEY to require \
+             an API key."
+        );
+    }
     let state = Arc::new(AppState {
         store: Mutex::new(ScanStore::open(&config.db_path)?),
         kb: Mutex::new(KnowledgeBase::open(&config.db_path)?),
         schedules: Mutex::new(Vec::new()),
         payloads_dir: config.payloads_dir.clone(),
+        api_key: config.api_key.clone(),
     });
     std::fs::create_dir_all(&config.payloads_dir)?;
 

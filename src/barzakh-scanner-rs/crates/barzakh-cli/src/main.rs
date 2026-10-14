@@ -411,6 +411,9 @@ struct ServeArgs {
     /// Directory where adversary payloads are materialized
     #[arg(long)]
     payloads_dir: Option<PathBuf>,
+    /// API key required by /api endpoints (or set BARZAKH_API_KEY)
+    #[arg(long)]
+    api_key: Option<String>,
 }
 
 // ─── Detectors ───────────────────────────────────────────────────────────────
@@ -1439,12 +1442,18 @@ fn cmd_ml(command: MlCommands) -> Result<()> {
 // ─── Serve ───────────────────────────────────────────────────────────────────
 
 fn cmd_serve(args: ServeArgs) -> Result<()> {
+    let api_key = args.api_key.or_else(|| {
+        std::env::var("BARZAKH_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
+    });
     let config = barzakh_server::ServerConfig {
         port: args.port,
         db_path: args.db,
         payloads_dir: args
             .payloads_dir
             .unwrap_or_else(|| PathBuf::from("payloads")),
+        api_key,
     };
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(barzakh_server::run_server(config))
