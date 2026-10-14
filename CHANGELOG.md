@@ -46,8 +46,36 @@ project follows semantic versioning. Dates are ISO-8601.
   attribution via `indicates` relationships. `barzakh-scanner intel
   stix` converts; `scripts/intel-update.sh --stix` grows a real
   transport (also fixes a pre-existing script syntax error).
-- **Weekly fuzzing workflow (0.7)** and **YARA parity (0.8)** — see
-  sections below.
+- **Weekly fuzzing workflow (0.7).** `.github/workflows/fuzz-weekly.yml`
+  runs protocol-aware fuzzing (dhcpv6, bmp, capsule, httpboot, tcg, hii)
+  and the mutation/robustness harness weekly (Mondays 03:00 UTC) or on
+  demand via `workflow_dispatch`. JSON reports are kept as 90-day
+  artifacts and summarized into the run page. Detector gaps are filed
+  as GitHub issues automatically — one issue per evading payload,
+  deduplicated by title, persistent gaps get a weekly comment instead
+  of duplicates; gap filing never fails the workflow. Iteration budgets
+  are tuned from local measurements (protocol fuzzing is ~free; the
+  harness gets iterations/20 since each payload mutation is a full
+  detector sweep).
+- **YARA parity (0.8).** The `barzakh-intel` YARA-subset engine now
+  runs real-world rules unmodified: regex strings (`/…/` with
+  ascii/wide/nocase), text modifiers (wide/nocase/fullword), multi-line
+  hex bodies, occurrence counts (`#a`), `filesize` with KB/MB suffixes,
+  a `pe` module subset (`is_pe`, `machine`, `subsystem`,
+  `number_of_sections`, `timestamp`, `entry_point`, `characteristics`,
+  `sections[n].name`, plus the standard constants), string operators
+  (`contains`/`startswith`/`endswith`/`matches /regex/`), `of` set
+  expressions with wildcards (`2 of ($a, $b)`, `2 of ($a*)`, `N% of
+  them`), integer arithmetic and bitwise operators, rule tags,
+  `private`/`global` prefixes, quote-aware `//` and `/* */` comment
+  stripping, and external variables via `--define NAME=VALUE` (typed
+  automatically; the scanned file's name is available as `filename`).
+  Acceptance proven by the curated pack
+  `intel-rules/packs/realworld-firmware.yar` — rules modeled on public
+  research for LoJax, BlackLotus, MoonBounce, ESPectre and Bootkitty
+  plus deployment-gated rules — which parses and fires on synthetic
+  infected images while staying quiet on clean ones
+  (`crates/barzakh-intel/tests/yara_parity.rs`).
 
 ### Changed
 - Detector precision rebuilt on realistic structure (Phase 0.1 fallout):

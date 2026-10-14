@@ -257,6 +257,7 @@ dependencies = [
  "anyhow",
  "barzakh-core",
  "chrono",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

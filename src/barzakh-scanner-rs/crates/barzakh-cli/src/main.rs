@@ -129,6 +129,11 @@ struct ScanArgs {
     #[arg(long)]
     yara: Option<PathBuf>,
 
+    /// Define an external variable for YARA rules, NAME=VALUE
+    /// (repeatable; "true"/"false" → bool, numeric → int, else string)
+    #[arg(long = "define", value_name = "NAME=VALUE")]
+    defines: Vec<String>,
+
     /// Record the scan result into this history database
     #[arg(long)]
     history: Option<PathBuf>,
@@ -616,12 +621,18 @@ fn cmd_scan(args: ScanArgs) -> Result<()> {
         }
     }
     if let Some(yara_path) = &args.yara {
-        let detector = if yara_path.is_dir() {
+        let mut detector = if yara_path.is_dir() {
             barzakh_intel::yara::YaraRuleDetector::from_dir(yara_path)
         } else {
             barzakh_intel::yara::YaraRuleDetector::from_file(yara_path)
         }
         .map_err(|e| anyhow::anyhow!("loading YARA rules {}: {e}", yara_path.display()))?;
+        for define in &args.defines {
+            let Some((name, value)) = define.split_once('=') else {
+                anyhow::bail!("--define expects NAME=VALUE, got '{define}'");
+            };
+            detector.set_external(name, value);
+        }
         scanner.register_detector(Box::new(detector));
         if !args.quiet && !args.json {
             println!(

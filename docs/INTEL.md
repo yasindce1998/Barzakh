@@ -115,28 +115,54 @@ tree, or `PATH`.
 
 ## 🧬 YARA-Subset Rules
 
-Barzakh supports a pragmatic subset of YARA rule syntax — no imports, no loops, no external variables. A rule has a name, a `strings:` section, and a `condition:`:
+Barzakh supports a pragmatic subset of YARA rule syntax — no loops, no references between rules. A rule has a name, a `strings:` section, and a `condition:`:
 
 ```yara
-rule blacklotus_stage1
+import "pe"
+
+rule blacklotus_stage2 : bootkit uefi
 {
+    meta:
+        family = "BlackLotus"
+        cve = "CVE-2022-21894"
     strings:
-        $a = "win: boot project" ascii
+        $a = "win: boot project" ascii wide
         $b = { DE AD BE EF 00 01 02 }
-        $c = "UEFI" wide ascii
+        $c = /Windows\\System32\\[a-z_]{3,20}\.sys/ nocase
     condition:
-        any of them
+        filesize < 500KB and
+        2 of them and
+        pe.is_pe and
+        pe.subsystem == pe.SUBSYSTEM_EFI_APPLICATION
 }
 ```
 
 | Element | Supported |
 |---------|-----------|
-| String literals | `"text"` with optional `ascii` / `wide` modifiers |
-| Hex patterns | `{ DE AD BE EF }`, wildcards `??` and jumps `[4-8]` |
-| Condition | `any of them`, `all of them`, `$a and $b`, `$a or $b`, `not $a` |
-| Not supported | imports, file size/pe modules, loops, private rules, references between rules |
+| Text strings | `"text"` with `ascii` / `wide` / `nocase` / `fullword` modifiers |
+| Hex patterns | `{ DE AD BE EF }`, wildcards `??` and jumps `[4-8]` (multi-line bodies allowed) |
+| Regex strings | `/pattern/` with `ascii` / `wide` / `nocase` |
+| Conditions | full boolean expressions: `and` / `or` / `not`, parentheses, comparisons (`== != < > <= >=`), string operators (`contains`, `startswith`, `endswith`, `matches /regex/`), integer arithmetic and bitwise operators |
+| Quantifiers | `any of them`, `all of them`, `N of them`, `N% of them`, and set forms `2 of ($a, $b)` / `2 of ($a*)` |
+| Occurrence counts | `#a >= 3` |
+| File size | `filesize` with `KB` / `MB` suffixes |
+| `pe` module subset | `is_pe`, `machine`, `subsystem`, `number_of_sections`, `timestamp`, `entry_point`, `characteristics`, `sections[n].name`, plus `MACHINE_*` / `SUBSYSTEM_*` / `DLL` / `EXECUTABLE_IMAGE` constants |
+| External variables | referenced by name, supplied via `--define` (see below); the scanned file's name is available as `filename` |
+| Rule syntax niceties | `meta` (family/cve/description kept, others tolerated), tags (`rule X : tag1 tag2`), `private`/`global` prefixes, `import` lines, `//` and `/* */` comments, multi-line sections |
+| Not supported | loops (`for … of`), references between rules, other modules (`elf`, `math`, …) |
 
-Rules live in `intel-rules/*.yar`. Every rule in the directory is compiled and evaluated during scans that pass `--yara`.
+Rules live in `intel-rules/*.yar`. Every rule in the directory is compiled and evaluated during scans that pass `--yara`. A curated pack of real-world-style firmware threat rules (LoJax, BlackLotus, MoonBounce, ESPectre, Bootkitty, plus deployment-gated rules) lives in `intel-rules/packs/realworld-firmware.yar`; it is not auto-loaded with the directory — pass it explicitly.
+
+### External variables
+
+Rules can reference caller-supplied values — e.g. `revoked == true` or `filename matches /shimx64-[0-9]+\.efi/`. Pass them with `--define` (typed automatically: `true`/`false` → bool, numeric → int, anything else → string). An external that is not defined evaluates to false, so a rule gated on it stays quiet rather than erroring:
+
+```bash
+barzakh-scanner scan --target fw.bin \
+    --yara intel-rules/packs/realworld-firmware.yar \
+    --define revoked=true \
+    --define site=berlin-1
+```
 
 ---
 
