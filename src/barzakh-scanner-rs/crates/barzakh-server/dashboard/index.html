@@ -54,7 +54,7 @@
   <section>
     <h2>Recent scans</h2>
     <table id="scans"><thead><tr>
-      <th>#</th><th>Time</th><th>Target</th><th>Risk</th><th>Verdict</th><th>C/H/M/L</th>
+      <th>#</th><th>Time</th><th>Target</th><th>Status</th><th>Risk</th><th>Verdict</th><th>C/H/M/L</th>
     </tr></thead><tbody></tbody></table>
   </section>
 
@@ -94,31 +94,50 @@ async function submitScan() {
   const target = $("target").value.trim();
   if (!target) { msg("enter a target path", false); return; }
   try {
-    msg("scanning…", true);
+    msg("submitting…", true);
     const result = await api("/api/scans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target }),
     });
-    msg(`scan #${result.scan_id} recorded`, true);
+    msg(`scan #${result.scan_id} running…`, true);
+    const detail = await pollScan(result.scan_id);
     await loadScans();
-    const detail = await api(`/api/scans/${result.scan_id}`);
     out(detail);
   } catch (e) { msg(e.message, false); }
+}
+
+// Poll a background scan until it completes (POST /api/scans is async:
+// it returns 202 with a running scan id immediately).
+async function pollScan(id) {
+  const deadline = Date.now() + 120000;
+  for (;;) {
+    const detail = await api(`/api/scans/${id}`);
+    if (detail.status === "complete") return detail;
+    if (detail.status === "failed") throw new Error(detail.error || `scan #${id} failed`);
+    if (Date.now() > deadline) throw new Error(`scan #${id} timed out`);
+    msg(`scan #${id} running…`, true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
 }
 
 async function loadScans() {
   try {
     const { scans } = await api("/api/scans");
     const tbody = $("scans").querySelector("tbody");
+    const statusBadge = (s) => s === "complete" ? badge("clean") + " complete"
+      : s === "running" ? badge("medium") + " running"
+      : s === "failed" ? badge("critical") + " failed"
+      : badge("low") + " " + s;
     tbody.innerHTML = (scans || []).map(s => `<tr>
       <td>${s.scan_id}</td>
       <td>${s.timestamp.replace("T", " ").slice(0, 19)}</td>
       <td>${s.target}</td>
+      <td>${statusBadge(s.status)}</td>
       <td>${badge(s.risk_level)} ${s.risk_score}/100</td>
       <td>${s.bootkit_detected ? badge("critical") + " bootkit" : badge("clean") + " clean"}</td>
       <td>${s.critical}/${s.high}/${s.medium}/${s.low}</td>
-    </tr>`).join("") || `<tr><td colspan="6" class="muted">no scans yet</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="7" class="muted">no scans yet</td></tr>`;
   } catch (e) { msg(e.message, false); }
 }
 
