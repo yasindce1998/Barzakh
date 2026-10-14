@@ -311,6 +311,10 @@ jobs:
         working-directory: src/barzakh-scanner-rs
         run: cargo test -p barzakh-adversary --test real_corpus -- --nocapture
 
+      - name: Run ML Anomaly Gate (E2E)
+        working-directory: src/barzakh-scanner-rs
+        run: cargo test -p barzakh-adversary --release -- --ignored ml_anomaly_gate
+
   security-audit-rs:
     name: Security Audit (Rust)
     runs-on: ubuntu-24.04

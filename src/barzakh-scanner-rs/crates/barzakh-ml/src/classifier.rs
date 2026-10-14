@@ -15,10 +15,20 @@ pub struct LogisticModel {
     pub weights: Vec<f64>,
     /// Bias term.
     pub bias: f64,
+    /// Calibrated decision threshold: `predict() > threshold` classifies
+    /// malicious. Chosen on the training data to maximize TPR - FPR
+    /// (Youden's J), so the operating point tracks the score
+    /// distribution instead of assuming a well-calibrated 0.5.
+    #[serde(default = "default_decision_threshold")]
+    pub decision_threshold: f64,
     /// Training metadata.
     pub trained_on: usize,
     pub epochs: usize,
     pub final_loss: f64,
+}
+
+fn default_decision_threshold() -> f64 {
+    0.5
 }
 
 /// Training hyperparameters.
@@ -96,13 +106,21 @@ impl LogisticModel {
             final_loss = loss / n;
         }
 
-        Self {
+        let mut model = Self {
             weights,
             bias,
+            decision_threshold: 0.5,
             trained_on: samples.len(),
             epochs: config.epochs,
             final_loss,
-        }
+        };
+        model.decision_threshold = optimal_threshold(samples, &model);
+        model
+    }
+
+    /// Classify a feature vector using the calibrated decision threshold.
+    pub fn classify(&self, features: &[f64]) -> bool {
+        self.predict(features) > self.decision_threshold
     }
 
     /// Probability that a feature vector is malicious (0..1).
@@ -165,6 +183,41 @@ impl Classification {
     }
 }
 
+/// Choose the decision threshold maximizing Youden's J (TPR - FPR) over
+/// the training scores. Candidate thresholds are midpoints between
+/// consecutive sorted scores; a final candidate of 1.0 (classify nothing)
+/// guards degenerate labelings.
+fn optimal_threshold(samples: &[LabeledSample], model: &LogisticModel) -> f64 {
+    let mut scores: Vec<(f64, bool)> = samples
+        .iter()
+        .map(|s| (model.predict(&s.features), s.malicious))
+        .collect();
+    scores.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("finite scores"));
+    let n = scores.len();
+    let malicious_total = scores.iter().filter(|(_, m)| *m).count().max(1);
+    let benign_total = n.saturating_sub(malicious_total).max(1);
+
+    let mut best_threshold = 0.5;
+    let mut best_j = f64::NEG_INFINITY;
+    for i in 0..n {
+        let threshold = if i + 1 < n {
+            (scores[i].0 + scores[i + 1].0) / 2.0
+        } else {
+            1.0
+        };
+        // Sorted ascending: everything after index i scores above the
+        // midpoint candidate.
+        let tp = scores[i + 1..].iter().filter(|(_, m)| *m).count();
+        let fp = scores[i + 1..].iter().filter(|(_, m)| !*m).count();
+        let j = tp as f64 / malicious_total as f64 - fp as f64 / benign_total as f64;
+        if j > best_j {
+            best_j = j;
+            best_threshold = threshold;
+        }
+    }
+    best_threshold
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +238,10 @@ mod tests {
                 max_run_length: 1024,
                 high_entropy_window: 2,
                 string_count: 200,
+                content_islands: 1,
+                binary_content_ratio: 0.0,
+                valid_pe_chains: 0,
+                ffs_file_count: 2,
             };
             let malicious = FirmwareFeatures {
                 size_bytes: 1 << 16,
@@ -196,6 +253,10 @@ mod tests {
                 max_run_length: 4,
                 high_entropy_window: 40,
                 string_count: 2,
+                content_islands: 6,
+                binary_content_ratio: 0.8,
+                valid_pe_chains: 2,
+                ffs_file_count: 0,
             };
             samples.push(LabeledSample {
                 features: clean.to_vector(),
@@ -224,6 +285,10 @@ mod tests {
             max_run_length: 2048,
             high_entropy_window: 1,
             string_count: 150,
+            content_islands: 1,
+            binary_content_ratio: 0.0,
+            valid_pe_chains: 0,
+            ffs_file_count: 2,
         };
         let malicious = FirmwareFeatures {
             size_bytes: 1 << 16,
@@ -235,6 +300,10 @@ mod tests {
             max_run_length: 3,
             high_entropy_window: 45,
             string_count: 1,
+            content_islands: 6,
+            binary_content_ratio: 0.8,
+            valid_pe_chains: 2,
+            ffs_file_count: 0,
         };
 
         let p_clean = model.predict(&clean.to_vector());
@@ -257,6 +326,10 @@ mod tests {
             max_run_length: 3,
             high_entropy_window: 45,
             string_count: 1,
+            content_islands: 6,
+            binary_content_ratio: 0.8,
+            valid_pe_chains: 2,
+            ffs_file_count: 0,
         };
         let class = Classification::from_model(&model, &features);
         assert_eq!(class.contributions.len(), 5);

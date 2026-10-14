@@ -19,6 +19,7 @@ tempfile = "3"
 
 [dev-dependencies]
 tempfile = "3"
+barzakh-ml = { path = "../barzakh-ml" }
 
 # cargo-binstall: release assets are raw binaries named
 # <binary>-<target-triple> (see .github/workflows/release.yml at the repo

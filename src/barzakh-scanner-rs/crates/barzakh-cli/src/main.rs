@@ -1409,8 +1409,13 @@ fn cmd_ml(command: MlCommands) -> Result<()> {
                 report.samples, report.malicious, report.benign
             );
             println!(
-                "  Isolation forest:   TPR {:.2}  FPR {:.2}",
-                report.iforest_tpr, report.iforest_fpr
+                "  Isolation forest:   TPR {:.2}  FPR {:.2}  (TP {}  FP {}  TN {}  FN {})",
+                report.iforest_tpr,
+                report.iforest_fpr,
+                report.iforest_true_positives,
+                report.iforest_false_positives,
+                report.iforest_true_negatives,
+                report.iforest_false_negatives
             );
             println!(
                 "  Logistic regression: TPR {:.2}  FPR {:.2}  AUC {:.2}",

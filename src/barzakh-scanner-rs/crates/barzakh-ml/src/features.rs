@@ -26,6 +26,23 @@ pub struct FirmwareFeatures {
     pub high_entropy_window: u64,
     /// Number of extracted ASCII strings ≥ 8 chars.
     pub string_count: u64,
+    /// Number of separated content islands: maximal runs of nonzero
+    /// bytes split by gaps of ≥ 4 zero bytes. Injected code and data
+    /// structures land at several distinct offsets; benign blobs are
+    /// typically one contiguous region.
+    pub content_islands: u64,
+    /// Fraction of nonzero bytes that are *not* printable ASCII.
+    /// Machine code and binary structures register here; legitimate
+    /// string tables do not.
+    pub binary_content_ratio: f64,
+    /// `MZ` headers whose `e_lfanew` points at a valid `PE\0\0`
+    /// signature (plausible distance: 0x40..0x400). Embedded executables
+    /// form such chains; coincidental `MZ` bytes do not.
+    pub valid_pe_chains: u64,
+    /// Plausible PI FFS file headers (8-byte aligned, valid state, file
+    /// type, and header checksum) — a proxy for real firmware-volume
+    /// layout.
+    pub ffs_file_count: u64,
 }
 
 impl FirmwareFeatures {
@@ -36,6 +53,11 @@ impl FirmwareFeatures {
         let mut histogram = [0u64; 256];
         let mut printable = 0u64;
         let mut zeros = 0u64;
+        // Single pass: byte histogram, printable/zero counts, and the
+        // content-island state machine (a run of nonzero bytes separated
+        // from the previous run by >= 4 zero bytes starts a new island).
+        let mut islands = 0u64;
+        let mut zero_gap = 0u32;
         for &b in data {
             histogram[b as usize] += 1;
             if (0x20..=0x7E).contains(&b) {
@@ -43,8 +65,15 @@ impl FirmwareFeatures {
             }
             if b == 0 {
                 zeros += 1;
+                zero_gap += 1;
+            } else {
+                if zero_gap >= 4 {
+                    islands += 1;
+                }
+                zero_gap = 0;
             }
         }
+        let nonzero = (len as u64).saturating_sub(zeros);
 
         let entropy = shannon_entropy(&histogram, len);
         let mz_count = count_occurrences(data, b"MZ");
@@ -52,6 +81,8 @@ impl FirmwareFeatures {
         let (max_run_length, string_count) = run_and_string_stats(data);
 
         let high_entropy_window = longest_high_entropy_window(data);
+        let valid_pe_chains = count_valid_pe_chains(data);
+        let ffs_file_count = count_ffs_headers(data);
 
         Self {
             size_bytes: data.len() as u64,
@@ -63,10 +94,18 @@ impl FirmwareFeatures {
             max_run_length,
             high_entropy_window,
             string_count,
+            content_islands: islands,
+            binary_content_ratio: if nonzero == 0 {
+                0.0
+            } else {
+                (nonzero.saturating_sub(printable)) as f64 / nonzero as f64
+            },
+            valid_pe_chains,
+            ffs_file_count,
         }
     }
 
-    /// Numeric feature vector for ML consumption (9 dims, roughly 0..1
+    /// Numeric feature vector for ML consumption (13 dims, roughly 0..1
     /// scaled).
     pub fn to_vector(&self) -> Vec<f64> {
         vec![
@@ -79,6 +118,10 @@ impl FirmwareFeatures {
             (self.max_run_length as f64).ln_1p() / 16.0,
             (self.high_entropy_window as f64).ln_1p() / 14.0,
             (self.string_count as f64).ln_1p() / 12.0,
+            (self.content_islands as f64).ln_1p() / 6.0,
+            self.binary_content_ratio,
+            (self.valid_pe_chains as f64).ln_1p() / 6.0,
+            (self.ffs_file_count as f64).ln_1p() / 10.0,
         ]
     }
 
@@ -92,6 +135,10 @@ impl FirmwareFeatures {
         "max_run_length",
         "high_entropy_window",
         "string_count",
+        "content_islands",
+        "binary_content_ratio",
+        "valid_pe_chains",
+        "ffs_file_count",
     ];
 }
 
@@ -116,6 +163,62 @@ fn count_occurrences(data: &[u8], needle: &[u8]) -> u64 {
         return 0;
     }
     data.windows(needle.len()).filter(|w| *w == needle).count() as u64
+}
+
+/// Count `MZ` headers whose `e_lfanew` field points at a valid `PE\0\0`
+/// signature within a plausible header distance.
+fn count_valid_pe_chains(data: &[u8]) -> u64 {
+    let mut chains = 0u64;
+    if data.len() < 0x40 {
+        return 0;
+    }
+    for i in 0..=data.len() - 0x40 {
+        if &data[i..i + 2] != b"MZ" {
+            continue;
+        }
+        let e_lfanew =
+            u32::from_le_bytes(data[i + 0x3C..i + 0x40].try_into().unwrap_or([0; 4])) as usize;
+        // Real PE headers put the signature within a few hundred bytes
+        // of the DOS header; larger or wrapped distances are noise.
+        if (0x40..0x400).contains(&e_lfanew)
+            && i + e_lfanew + 4 <= data.len()
+            && &data[i + e_lfanew..i + e_lfanew + 4] == b"PE\0\0"
+        {
+            chains += 1;
+        }
+    }
+    chains
+}
+
+/// Count plausible PI FFS file headers: 8-byte aligned, valid state byte
+/// (0x07 / 0xF8), a known file type, and a header checksum that sums to
+/// zero. This proxies real firmware-volume layout.
+fn count_ffs_headers(data: &[u8]) -> u64 {
+    const MIN_HEADER: usize = 24;
+    let mut count = 0u64;
+    if data.len() < MIN_HEADER {
+        return 0;
+    }
+    let mut i = 0usize;
+    while i + MIN_HEADER <= data.len() {
+        let state = data[i + 23];
+        let file_type = data[i + 18];
+        if (state == 0x07 || state == 0xF8)
+            && ((0x01..=0x0E).contains(&file_type) || file_type == 0xF0)
+        {
+            let size = u32::from_le_bytes([data[i + 20], data[i + 21], data[i + 22], 0]) as usize;
+            if size >= MIN_HEADER && i + size <= data.len() {
+                let checksum: u8 = data[i..i + MIN_HEADER]
+                    .iter()
+                    .fold(0u8, |a, &b| a.wrapping_add(b));
+                if checksum == 0 {
+                    count += 1;
+                }
+            }
+        }
+        i += 8;
+    }
+    count
 }
 
 fn run_and_string_stats(data: &[u8]) -> (u64, u64) {

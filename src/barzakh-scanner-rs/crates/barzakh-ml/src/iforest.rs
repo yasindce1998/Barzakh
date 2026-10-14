@@ -28,22 +28,33 @@ impl IsolationTree {
             };
         }
         let dims = samples[0].len();
-        let feature = (rng.next() % dims as u64) as usize;
-
-        let mut min = f64::MAX;
-        let mut max = f64::MIN;
-        for s in samples {
-            min = min.min(s[feature]);
-            max = max.max(s[feature]);
+        // Pick a random feature that actually varies in this subsample.
+        // A constant feature cannot split anything; terminating the branch
+        // on one wastes tree depth for every sample that passes through,
+        // diluting the path-length contrast between normal and anomalous
+        // points. Try up to `dims` random features before giving up.
+        let mut chosen: Option<(usize, f64, f64)> = None;
+        for _ in 0..dims {
+            let feature = (rng.next() % dims as u64) as usize;
+            let mut min = f64::MAX;
+            let mut max = f64::MIN;
+            for s in samples {
+                min = min.min(s[feature]);
+                max = max.max(s[feature]);
+            }
+            if (max - min).abs() >= 1e-12 {
+                chosen = Some((feature, min, max));
+                break;
+            }
         }
-        if (max - min).abs() < 1e-12 {
+        let Some((feature, min, max)) = chosen else {
             return Self {
                 feature: None,
                 threshold: 0.0,
                 left: None,
                 right: None,
             };
-        }
+        };
         let t = (rng.next() % 10_000) as f64 / 10_000.0;
         let threshold = min + t * (max - min);
 
@@ -187,16 +198,19 @@ impl IsolationForest {
             / self.trees.len() as f64;
         let base = 2f64.powf(-avg_length / self.normalizer);
 
-        // Fraction of ranged features outside the training envelope
-        // (with a 5%-of-range tolerance band).
+        // Fraction of ranged features outside the training envelope.
+        // Features that were *constant* across the benign training data
+        // (zero-width envelope) are included with an absolute tolerance
+        // floor: a benign-invariant property deviating is itself a strong
+        // anomaly indicator, not noise.
         let mut ranged = 0usize;
         let mut outside = 0usize;
         for (d, &(min, max)) in self.feature_ranges.iter().enumerate() {
-            if d >= sample.len() || (max - min).abs() < 1e-12 {
+            if d >= sample.len() {
                 continue;
             }
             ranged += 1;
-            let tolerance = (max - min) * 0.05;
+            let tolerance = ((max - min) * 0.05).max(1e-6);
             if sample[d] < min - tolerance || sample[d] > max + tolerance {
                 outside += 1;
             }
@@ -286,6 +300,13 @@ pub fn synthetic_clean_profiles() -> Vec<Vec<f64>> {
             max_run_length: 16 + next() % 65536,
             high_entropy_window: next() % 64,
             string_count: 1 + next() % 1000,
+            // Benign profiles are single contiguous printable regions;
+            // occasional embedded PEs and FFS files are still normal in
+            // real firmware volumes.
+            content_islands: 1 + next() % 2,
+            binary_content_ratio: (next() % 40) as f64 / 1000.0,
+            valid_pe_chains: next() % 2,
+            ffs_file_count: next() % 4,
         };
         profiles.push(features.to_vector());
     }

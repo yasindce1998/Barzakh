@@ -178,6 +178,7 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "barzakh-core",
+ "barzakh-ml",
  "byteorder",
  "crc32fast",
  "serde",
