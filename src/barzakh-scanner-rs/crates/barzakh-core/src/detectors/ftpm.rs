@@ -56,6 +56,13 @@ impl FtpmDetector {
                 continue;
             }
 
+            if command_size == 0 {
+                // A zero size means the bytes after the tag are not a
+                // header at all (zero u32s follow `80 01` constantly in
+                // ordinary code); there is nothing malformed to report.
+                continue;
+            }
+
             if command_size < 10 {
                 findings.push(
                     Finding::new(

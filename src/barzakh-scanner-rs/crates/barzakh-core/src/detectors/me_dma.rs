@@ -42,10 +42,18 @@ impl MeDmaDetector {
             // target page-aligned buffers: unaligned "addresses" are byte
             // sequences (negative branch displacements, 0xFF runs) that
             // merely look like kernel-space pointers.
-            let src_in_kernel =
-                src_addr >= KERNEL_SPACE_MIN && src_addr != u64::MAX && (src_addr & 0xFFF) == 0;
-            let dst_in_kernel =
-                dst_addr >= KERNEL_SPACE_MIN && dst_addr != u64::MAX && (dst_addr & 0xFFF) == 0;
+            // Kernel-space DMA targets must also not have their top 32
+            // bits all ones: such values are masks / small negative
+            // constants, not kernel buffer addresses (the kernel heap and
+            // direct map live well below 0xFFFFFFFF00000000).
+            let src_in_kernel = src_addr >= KERNEL_SPACE_MIN
+                && src_addr != u64::MAX
+                && (src_addr & 0xFFF) == 0
+                && (src_addr >> 32) != 0xFFFF_FFFF;
+            let dst_in_kernel = dst_addr >= KERNEL_SPACE_MIN
+                && dst_addr != u64::MAX
+                && (dst_addr & 0xFFF) == 0
+                && (dst_addr >> 32) != 0xFFFF_FFFF;
 
             // Both addresses must be non-zero and plausible: either a
             // physical address (< 2^48) or a page-aligned kernel-space

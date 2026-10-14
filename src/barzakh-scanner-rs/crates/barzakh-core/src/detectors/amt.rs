@@ -106,9 +106,15 @@ impl AmtDetector {
                         w == [0x66, 0x42] || w == [0x67, 0x42]
                     });
 
-                    let has_sol_string = context.windows(3).any(|w| w == b"SOL");
+                    // A bare "SOL" substring matches ordinary words
+                    // ("RESOLUTION", "PAROLE", ...); require the
+                    // NUL-terminated SOL label instead.
+                    let has_sol_string = context.windows(4).any(|w| w == b"SOL\x00");
 
-                    if has_sol_port || has_sol_string {
+                    // A two-byte port value occurs by chance in ordinary
+                    // code constants; require the explicit SOL label as
+                    // well before reporting a channel setup.
+                    if has_sol_port && has_sol_string {
                         findings.push(
                             Finding::new(
                                 "amt",

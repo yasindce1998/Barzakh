@@ -180,6 +180,7 @@ impl MicrocodeInjectionDetector {
                 let table_data = &data[i + 8..i + 8 + table_len];
 
                 let mut nonzero_entries = 0usize;
+                let mut total_entries = 0usize;
                 let mut null_proc_nonzero_equiv = false;
                 let mut entry_off = 0usize;
                 while entry_off + entry_size <= table_data.len() {
@@ -191,6 +192,7 @@ impl MicrocodeInjectionDetector {
                     ]);
                     let equiv_id =
                         u16::from_le_bytes([table_data[entry_off + 8], table_data[entry_off + 9]]);
+                    total_entries += 1;
                     if proc_id == 0 && equiv_id != 0 {
                         null_proc_nonzero_equiv = true;
                     }
@@ -211,7 +213,11 @@ impl MicrocodeInjectionDetector {
                 // Terminator: the final entry must be null.
                 let terminator_ok = table_data[table_len - entry_size..].iter().all(|&b| b == 0);
 
-                if nonzero_entries < 2 || !terminator_ok {
+                // Every entry of a real equivalence table is a real
+                // processor signature: the plausible entries must form the
+                // majority. Random byte runs that survive the structural
+                // gates have a plausible-entry rate near zero.
+                if nonzero_entries < 2 || !terminator_ok || nonzero_entries * 2 < total_entries {
                     continue;
                 }
 

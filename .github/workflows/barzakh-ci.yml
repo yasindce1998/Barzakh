@@ -296,6 +296,9 @@ jobs:
         with:
           workspaces: src/barzakh-scanner-rs
 
+      - name: Fetch Real Firmware Corpus
+        run: ./scripts/fetch-real-corpus.sh
+
       - name: Run Adversary Unit Tests
         working-directory: src/barzakh-scanner-rs
         run: cargo test -p barzakh-adversary
@@ -303,6 +306,10 @@ jobs:
       - name: Run Corpus Validation (E2E)
         working-directory: src/barzakh-scanner-rs
         run: cargo test -p barzakh-adversary -- --ignored corpus_validation
+
+      - name: Run Real-Corpus Validation (E2E)
+        working-directory: src/barzakh-scanner-rs
+        run: cargo test -p barzakh-adversary --test real_corpus -- --nocapture
 
   security-audit-rs:
     name: Security Audit (Rust)

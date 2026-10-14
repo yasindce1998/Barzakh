@@ -131,6 +131,7 @@ pub mod symexec;
 pub mod thermal_covert;
 pub mod timetravel;
 pub mod tpm_command;
+pub mod varstore;
 pub mod voltage_glitch;
 pub mod volte_firmware;
 pub mod wifi_dxe;
@@ -147,7 +148,7 @@ pub fn create_all_detectors(baseline: Option<Baseline>) -> Vec<Box<dyn Detector>
         Box::new(hook::HookDetector::new(baseline.clone())),
         Box::new(eventlog::EventLogDetector::new()),
         Box::new(entropy::EntropyAnalyzer::new()),
-        Box::new(secureboot::SecureBootDetector::new(baseline.clone())),
+        Box::new(secureboot::SecureBootDetector::new()),
         Box::new(runtime::RuntimeHookDetector::new(baseline.clone())),
         Box::new(smm::SmmDetector::new()),
         Box::new(firmware_volume::FirmwareVolumeDetector::new()),

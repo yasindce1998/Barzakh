@@ -74,6 +74,15 @@ impl Payload for RiscvUefiBootPayload {
         cursor.write_u32::<LittleEndian>(0x0003_0067)?; // JALR x0, t1, 0
         cursor.write_u64::<LittleEndian>(0x8000_0000_DEAD_0000)?; // target in M-mode memory
 
+        // Embedded stage-2 image at page 0x1000: the bootkit maps a
+        // second unsigned executable into memory after the S-mode
+        // trampoline fires.
+        let stage2 = 0x1000;
+        data[stage2..stage2 + 2].copy_from_slice(b"MZ");
+        data[stage2 + 0x3C..stage2 + 0x40].copy_from_slice(&0x80u32.to_le_bytes());
+        let s2_pe = stage2 + 0x80;
+        data[s2_pe..s2_pe + 4].copy_from_slice(b"PE\0\0");
+
         Ok(data)
     }
 

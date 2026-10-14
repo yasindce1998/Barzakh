@@ -55,6 +55,18 @@ impl PixiefailDetector {
         // reporting on; random firmware bytes interpreted as packets
         // almost never contain even one.
         let mut recognized = 0;
+        // A real DHCPv6 message starts with a standard option; random
+        // candidates almost never do.
+        let mut first_option_recognized = false;
+        // At least one recognized option must carry real data (length
+        // >= 8, e.g. an IA_NA or a DUID). Repeated tiny options (code 1,
+        // length 1 strides in u16 tables) are not packet structure.
+        let mut has_substantial_option = false;
+        // Real packets reference several *different* options (client id,
+        // IA_NA, DNS, ...). Byte runs that qualify via a single option
+        // code repeated many times (e.g. `00 10 00 10` table strides)
+        // are not packets.
+        let mut distinct_codes = std::collections::HashSet::with_capacity(8);
         while pos + 4 <= window {
             let code = u16::from_be_bytes(data[pos..pos + 2].try_into().unwrap_or([0; 2]));
             let len =
@@ -67,10 +79,21 @@ impl PixiefailDetector {
                 // (e.g. `00 10 00 00` strides), not packet structure; only
                 // options carrying data qualify a candidate.
                 recognized += 1;
+                distinct_codes.insert(code);
+                if pos == 0 {
+                    first_option_recognized = true;
+                }
+                if len >= 8 {
+                    has_substantial_option = true;
+                }
             }
             pos += 4 + len;
         }
-        if recognized < MIN_RECOGNIZED_OPTIONS {
+        if recognized < MIN_RECOGNIZED_OPTIONS
+            || !first_option_recognized
+            || !has_substantial_option
+            || distinct_codes.len() < 3
+        {
             return findings;
         }
 

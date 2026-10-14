@@ -19,18 +19,20 @@ impl Payload for AndroidTrustyTamperPayload {
         let size = config.size.max(0x4000);
         let mut data = vec![0u8; size];
 
-        // Trusty OS image header magic "TRUS"
+        // Trusty OS image header magic "TRUSTY"
         data[0] = b'T';
         data[1] = b'R';
         data[2] = b'U';
         data[3] = b'S';
+        data[4] = b'T';
+        data[5] = b'Y';
 
         // Image version
-        let mut cursor = std::io::Cursor::new(&mut data[4..8]);
+        let mut cursor = std::io::Cursor::new(&mut data[6..10]);
         cursor.write_u32::<LittleEndian>(0x0003)?;
 
         // Image size
-        let mut cursor = std::io::Cursor::new(&mut data[8..12]);
+        let mut cursor = std::io::Cursor::new(&mut data[10..14]);
         cursor.write_u32::<LittleEndian>(size as u32)?;
 
         // Load address OUTSIDE secure memory (normal world address)

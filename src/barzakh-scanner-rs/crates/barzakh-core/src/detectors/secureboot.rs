@@ -1,78 +1,79 @@
 use std::path::Path;
 
-use crate::baseline::Baseline;
 use crate::detector::{Detector, DetectorError, Finding, Severity};
+use crate::detectors::varstore;
 
-#[allow(dead_code)]
-const EFI_VARIABLE_GUID: &[u8] =
-    b"\x61\xdf\xe4\x8b\xca\x93\xd2\x11\xaa\x0d\x00\xe0\x98\x03\x2b\x8c";
+/// `gEfiGlobalVariableGuid` — the vendor GUID of SecureBoot/SetupMode.
+const EFI_GLOBAL_VARIABLE_GUID: [u8; 16] = [
+    0x61, 0xDF, 0xE4, 0x8B, 0xCA, 0x93, 0xD2, 0x11, 0xAA, 0x0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C,
+];
+
 const SECURE_BOOT_ENABLED: u8 = 1;
 
-pub struct SecureBootDetector {
-    #[allow(dead_code)]
-    baseline: Option<Baseline>,
+pub struct SecureBootDetector;
+
+impl Default for SecureBootDetector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SecureBootDetector {
-    pub fn new(baseline: Option<Baseline>) -> Self {
-        Self { baseline }
+    pub fn new() -> Self {
+        Self
     }
 
     fn check_secure_boot_state(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        // Search for SecureBoot variable
-        let sb_var_name = b"S\x00e\x00c\x00u\x00r\x00e\x00B\x00o\x00o\x00t\x00";
-        if let Some(pos) = data
-            .windows(sb_var_name.len())
-            .position(|w| w == sb_var_name)
-        {
-            // Check if Secure Boot is disabled
-            let value_offset = pos + sb_var_name.len() + 8; // skip past attributes
-            if value_offset < data.len() && data[value_offset] != SECURE_BOOT_ENABLED {
-                findings.push(
-                    Finding::new(
-                        "secureboot",
-                        Severity::High,
-                        "Secure Boot is disabled",
-                        "The SecureBoot UEFI variable indicates Secure Boot is disabled. \
-                         This allows unsigned code execution during boot.",
-                    )
-                    .with_confidence(0.90)
-                    .with_details(serde_json::json!({
-                        "variable": "SecureBoot",
-                        "value": data.get(value_offset).unwrap_or(&0),
-                        "offset": format!("0x{:08X}", pos),
-                    }))
-                    .with_recommendation("Enable Secure Boot in firmware settings."),
-                );
+        // SecureBoot/SetupMode are UEFI variables: they only carry meaning
+        // inside a real variable store. Every UEFI binary embeds the
+        // variable *names* as strings, so name-matching outside a store is
+        // pure noise.
+        for entry in varstore::parse_entries(data) {
+            if entry.guid != EFI_GLOBAL_VARIABLE_GUID || entry.data.is_empty() {
+                continue;
             }
-        }
-
-        // Search for SetupMode variable
-        let setup_var_name = b"S\x00e\x00t\x00u\x00p\x00M\x00o\x00d\x00e\x00";
-        if let Some(pos) = data
-            .windows(setup_var_name.len())
-            .position(|w| w == setup_var_name)
-        {
-            let value_offset = pos + setup_var_name.len() + 8;
-            if value_offset < data.len() && data[value_offset] == 1 {
-                findings.push(
-                    Finding::new(
-                        "secureboot",
-                        Severity::Critical,
-                        "Platform in Setup Mode",
-                        "SetupMode is enabled, meaning Platform Key (PK) can be enrolled \
-                         by anyone. An attacker can install their own keys.",
-                    )
-                    .with_confidence(0.95)
-                    .with_details(serde_json::json!({
-                        "variable": "SetupMode",
-                        "value": 1,
-                        "offset": format!("0x{:08X}", pos),
-                    }))
-                    .with_recommendation("Enroll a Platform Key to exit Setup Mode immediately."),
-                );
+            match entry.name.as_str() {
+                "SecureBoot" if entry.data[0] != SECURE_BOOT_ENABLED => {
+                    findings.push(
+                        Finding::new(
+                            "secureboot",
+                            Severity::High,
+                            "Secure Boot is disabled",
+                            "The SecureBoot variable in the firmware variable store is set \
+                             to 0. Unsigned code execution is permitted during boot.",
+                        )
+                        .with_confidence(0.90)
+                        .with_details(serde_json::json!({
+                            "variable": "SecureBoot",
+                            "value": entry.data[0],
+                            "offset": format!("0x{:08X}", entry.offset),
+                        }))
+                        .with_recommendation("Enable Secure Boot in firmware settings."),
+                    );
+                }
+                "SetupMode" if entry.data[0] == 1 => {
+                    findings.push(
+                        Finding::new(
+                            "secureboot",
+                            Severity::Critical,
+                            "Platform in Setup Mode",
+                            "SetupMode is enabled, meaning the Platform Key (PK) can be \
+                             enrolled by anyone. An attacker can install their own keys.",
+                        )
+                        .with_confidence(0.95)
+                        .with_details(serde_json::json!({
+                            "variable": "SetupMode",
+                            "value": 1,
+                            "offset": format!("0x{:08X}", entry.offset),
+                        }))
+                        .with_recommendation(
+                            "Enroll a Platform Key to exit Setup Mode immediately.",
+                        ),
+                    );
+                }
+                _ => {}
             }
         }
 

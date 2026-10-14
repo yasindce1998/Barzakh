@@ -37,7 +37,13 @@ impl MemoryDetector {
 
     fn detect_pe_in_runtime(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let mut offset = 0;
+
+        // This check models finding an injected PE in a *memory dump*'s
+        // runtime region, scanning page-aligned addresses. Page 0 is the
+        // scan target's own image header: when the target is itself a
+        // PE/COFF file (an EFI application or driver) its own MZ header is
+        // not an injection. Embedded images on later pages still are.
+        let mut offset = 0x1000;
 
         while offset + 2 <= data.len() {
             if &data[offset..offset + 2] == PE_MAGIC && offset + 0x3C + 4 <= data.len() {

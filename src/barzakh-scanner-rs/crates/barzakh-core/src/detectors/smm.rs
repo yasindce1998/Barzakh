@@ -25,11 +25,11 @@ impl SmmDetector {
         let mut findings = Vec::new();
 
         // Look for SMRAM Control register patterns
-        // D_LCK bit (bit 4) in SMRAMC register should be set
-        let smramc_patterns: &[&[u8]] = &[
-            b"SMRAMC",
-            &[0x9D, 0x00], // typical SMRAMC register encoding
-        ];
+        // D_LCK bit (bit 4) in SMRAMC register should be set. The check is
+        // anchored on the register name in debug/config data; bare two-byte
+        // encodings (e.g. 0x9D 0x00) occur constantly in ordinary code and
+        // data and carry no SMRAMC meaning on their own.
+        let smramc_patterns: &[&[u8]] = &[b"SMRAMC"];
 
         for pattern in smramc_patterns {
             if let Some(pos) = data.windows(pattern.len()).position(|w| w == *pattern) {

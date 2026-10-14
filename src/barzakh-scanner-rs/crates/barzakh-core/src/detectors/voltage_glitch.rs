@@ -293,7 +293,20 @@ impl VoltageGlitchDetector {
                 let addr = data[i];
                 let reg = data[i + 1];
                 let val = data[i + 2];
-                (addr == PMIC_I2C_ADDR_60 || addr == PMIC_I2C_ADDR_62) && reg <= 0x7F && val != 0x00
+                // Three consecutive printable ASCII bytes are text, not an
+                // I2C transaction (lowercase letters land in the PMIC
+                // address range 0x60-0x62 constantly). UTF-16LE text is
+                // rejected by the register byte: the high byte of every
+                // ASCII character is 0x00, and voltage/frequency control
+                // registers are never register zero.
+                let looks_like_text = (0x20..0x7F).contains(&addr)
+                    && (0x20..0x7F).contains(&reg)
+                    && (0x20..0x7F).contains(&val);
+                (addr == PMIC_I2C_ADDR_60 || addr == PMIC_I2C_ADDR_62)
+                    && reg != 0x00
+                    && reg <= 0x7F
+                    && val != 0x00
+                    && !looks_like_text
             })
             .map(|i| (i, data[i], data[i + 2]))
             .collect();

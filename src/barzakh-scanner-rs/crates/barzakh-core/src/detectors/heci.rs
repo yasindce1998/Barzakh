@@ -139,9 +139,15 @@ impl HeciDetector {
             }
         }
 
-        let clustered = sites.windows(2).find(|w| w[1] - w[0] <= 256);
-        if let Some(pair) = clustered {
-            let i = pair[0];
+        // An interception routine performs the read-modify-write
+        // repeatedly: a finding requires at least three sites within a
+        // 64-byte window. Pairs of coincidental sites occur in ordinary
+        // code; triples essentially never do.
+        let clustered = sites
+            .windows(3)
+            .find(|w| w[2] - w[0] <= 64)
+            .map(|w| (w[0], w[1], w[2]));
+        if let Some((i, second, third)) = clustered {
             findings.push(
                 Finding::new(
                     "heci",
@@ -149,15 +155,16 @@ impl HeciDetector {
                     "HECI bus interception artifacts",
                     &format!(
                         "Detected repeated read-modify-write pattern to HECI H_CSR at offsets \
-                         0x{:08X} and 0x{:08X} with OR mask operations. This indicates \
+                         0x{:08X}, 0x{:08X} and 0x{:08X} with OR mask operations. This indicates \
                          manipulation of HECI circular buffers for bus interception.",
-                        i, pair[1]
+                        i, second, third
                     ),
                 )
                 .with_confidence(0.60)
                 .with_details(serde_json::json!({
                     "offset": format!("0x{:08X}", i),
-                    "second_offset": format!("0x{:08X}", pair[1]),
+                    "second_offset": format!("0x{:08X}", second),
+                    "third_offset": format!("0x{:08X}", third),
                     "pattern": "H_CSR read-modify-write with OR mask",
                 }))
                 .with_recommendation(

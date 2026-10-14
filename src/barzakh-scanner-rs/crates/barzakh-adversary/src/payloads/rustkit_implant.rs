@@ -63,6 +63,15 @@ impl Payload for RustkitImplantPayload {
         put(b"rustkit::dxe::efi_main", &mut sect[0x60..0x80]);
         put(b"commbuffer::validate_vulnerable", &mut sect[0x80..0xA0]);
 
+        // Embedded stage-2 image at page 0x1000: the implant carries a
+        // second unsigned executable that it maps into runtime memory
+        // after establishing itself.
+        let stage2 = 0x1000;
+        data[stage2..stage2 + 2].copy_from_slice(b"MZ");
+        data[stage2 + 0x3C..stage2 + 0x40].copy_from_slice(&0x80u32.to_le_bytes());
+        let s2_pe = stage2 + 0x80;
+        data[s2_pe..s2_pe + 4].copy_from_slice(b"PE\0\0");
+
         Ok(data)
     }
 
