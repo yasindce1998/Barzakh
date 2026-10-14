@@ -161,6 +161,7 @@ barzakh/
 ├── docs/
 │   ├── SETUP.md              # Environment setup guide
 │   ├── ARCHITECTURE.md       # This file
+│   ├── ROADMAP.md            # Flagship platform roadmap (5 pillars)
 │   ├── ANDROID_BOOT.md       # Android boot security (9 modules)
 │   ├── TESTING.md            # Testing strategy
 │   ├── LAB_TESTING.md        # Hardware lab testing & build-mode reference

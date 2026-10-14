@@ -686,6 +686,7 @@ For real hardware testing beyond QEMU, see [`docs/LAB_TESTING.md`](docs/LAB_TEST
 | Document | Purpose |
 |----------|---------|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture, component interactions, data flow |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Flagship platform roadmap — eBPF telemetry, DMA/NVRAM frontier, cyber range, Wasm policies, `no_std` Rust UEFI |
 | [`docs/ANDROID_BOOT.md`](docs/ANDROID_BOOT.md) | Android boot security — 9 modules covering pKVM, DICE, GKI, RKP, Trusty, and more |
 | [`docs/DASHBOARD.md`](docs/DASHBOARD.md) | Web dashboard & REST API (`barzakh-server`) reference |
 | [`docs/AGENT.md`](docs/AGENT.md) | Continuous monitoring agent (`barzakh-agent`) configuration |
