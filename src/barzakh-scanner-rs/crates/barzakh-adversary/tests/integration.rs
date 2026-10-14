@@ -1,9 +1,15 @@
 use std::io::Write;
 
 use barzakh_adversary::payloads::boot_services_hook::BootServicesHookPayload;
+use barzakh_adversary::payloads::commbuffer_toctou::CommbufferToctouPayload;
+use barzakh_adversary::payloads::dma_window_bypass::DmaWindowBypassPayload;
+use barzakh_adversary::payloads::dmar_remap_hole::DmarRemapHolePayload;
 use barzakh_adversary::payloads::fv_tamper::FirmwareVolumeTamperPayload;
+use barzakh_adversary::payloads::nvram_silent_downgrade::NvramSilentDowngradePayload;
 use barzakh_adversary::payloads::pe_inject::PeInjectPayload;
+use barzakh_adversary::payloads::rustkit_implant::RustkitImplantPayload;
 use barzakh_adversary::payloads::signature_plant::SignaturePlantPayload;
+use barzakh_adversary::payloads::signed_loader_chain::SignedLoaderChainPayload;
 use barzakh_adversary::payloads::trampoline::TrampolinePayload;
 use barzakh_adversary::validate::validate_payload;
 use barzakh_adversary::{Arch, Payload, PayloadConfig};
@@ -77,6 +83,60 @@ fn test_signature_plant_detected() {
     let result = validate_payload(&payload, tmp.path()).unwrap();
     assert!(result.detected, "Signature plant should be detected");
     assert!(result.matched_findings > 0);
+}
+
+#[test]
+fn test_dmar_remap_hole_detected() {
+    let payload = DmarRemapHolePayload;
+    let config = PayloadConfig::default();
+    let tmp = write_payload_to_temp(&payload, &config);
+    let result = validate_payload(&payload, tmp.path()).unwrap();
+    assert!(result.detected, "DMAR remap hole should be detected");
+}
+
+#[test]
+fn test_dma_window_bypass_detected() {
+    let payload = DmaWindowBypassPayload;
+    let config = PayloadConfig::default();
+    let tmp = write_payload_to_temp(&payload, &config);
+    let result = validate_payload(&payload, tmp.path()).unwrap();
+    assert!(result.detected, "DMA window bypass should be detected");
+}
+
+#[test]
+fn test_nvram_silent_downgrade_detected() {
+    let payload = NvramSilentDowngradePayload;
+    let config = PayloadConfig::default();
+    let tmp = write_payload_to_temp(&payload, &config);
+    let result = validate_payload(&payload, tmp.path()).unwrap();
+    assert!(result.detected, "NVRAM silent downgrade should be detected");
+}
+
+#[test]
+fn test_signed_loader_chain_detected() {
+    let payload = SignedLoaderChainPayload;
+    let config = PayloadConfig::default();
+    let tmp = write_payload_to_temp(&payload, &config);
+    let result = validate_payload(&payload, tmp.path()).unwrap();
+    assert!(result.detected, "Signed loader chain should be detected");
+}
+
+#[test]
+fn test_rustkit_implant_detected() {
+    let payload = RustkitImplantPayload;
+    let config = PayloadConfig::default();
+    let tmp = write_payload_to_temp(&payload, &config);
+    let result = validate_payload(&payload, tmp.path()).unwrap();
+    assert!(result.detected, "RustKit implant should be detected");
+}
+
+#[test]
+fn test_commbuffer_toctou_detected() {
+    let payload = CommbufferToctouPayload;
+    let config = PayloadConfig::default();
+    let tmp = write_payload_to_temp(&payload, &config);
+    let result = validate_payload(&payload, tmp.path()).unwrap();
+    assert!(result.detected, "CommBuffer TOCTOU should be detected");
 }
 
 #[test]

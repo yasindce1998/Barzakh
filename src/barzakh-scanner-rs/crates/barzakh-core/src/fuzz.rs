@@ -10,6 +10,10 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
+/// RustKit SMM handler GUID used by the CommBuffer seed (matches the
+/// `rust_uefi_module` detector and `src/RustKitPkg/src/commbuffer.rs`).
+const RUSTKIT_HANDLER_GUID: [u8; 16] = crate::detectors::rust_uefi_module::RUSTKIT_MARKER_GUID;
+
 /// Protocols with structure-aware seed generators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -20,6 +24,9 @@ pub enum Protocol {
     HttpBoot,
     TcgEvent,
     Hii,
+    /// SMM communication buffer — the C↔Rust FFI seam fuzzed by the
+    /// RustKitPkg boundary harness (`EFI_SMM_COMMUNICATE_HEADER` shapes).
+    CommBuffer,
 }
 
 impl Protocol {
@@ -30,6 +37,7 @@ impl Protocol {
         Self::HttpBoot,
         Self::TcgEvent,
         Self::Hii,
+        Self::CommBuffer,
     ];
 
     pub fn parse(s: &str) -> Option<Self> {
@@ -40,6 +48,7 @@ impl Protocol {
             "httpboot" | "http_boot" | "http" => Some(Self::HttpBoot),
             "tcg" | "tcgevent" | "event" => Some(Self::TcgEvent),
             "hii" => Some(Self::Hii),
+            "commbuffer" | "comm_buffer" | "smm" | "ffi" => Some(Self::CommBuffer),
             _ => None,
         }
     }
@@ -52,6 +61,7 @@ impl Protocol {
             Self::HttpBoot => "http_boot",
             Self::TcgEvent => "tcg_event",
             Self::Hii => "hii",
+            Self::CommBuffer => "comm_buffer",
         }
     }
 }
@@ -143,6 +153,9 @@ fn length_field_offsets(protocol: Protocol, seed_len: usize) -> Vec<usize> {
         Protocol::HttpBoot => vec![],
         Protocol::TcgEvent => vec![],
         Protocol::Hii => vec![2],
+        // EFI_SMM_COMMUNICATE_HEADER MessageLength (after the 16-byte
+        // HeaderGuid): the field a C↔Rust double fetch mutates in flight.
+        Protocol::CommBuffer => vec![16],
     }
     .into_iter()
     .filter(|&o| o + 1 < seed_len)
@@ -221,6 +234,18 @@ pub fn generate_seed(protocol: Protocol) -> Vec<u8> {
             v.extend_from_slice(&[0x20, 0x00, 0x00, 0x02]); // len=0x20, type=STRING
             v.extend_from_slice(&[0x44, 0x04, 0x00]); // header size, string type
             v.extend_from_slice(&[0x90; 29]);
+            v
+        }
+        Protocol::CommBuffer => {
+            // EFI_SMM_COMMUNICATE_HEADER routed to the RustKit handler:
+            // HeaderGuid(16) + MessageLength(4) + message. The declared
+            // length matches the payload exactly — the well-formed seed a
+            // double-fetch attack starts from.
+            let message: &[u8] = b"RUSTKIT-COMM-MSG\0\0\0\0\0\0\0\0\0\0\0\0";
+            let mut v = Vec::new();
+            v.extend_from_slice(&RUSTKIT_HANDLER_GUID);
+            v.extend_from_slice(&(message.len() as u32).to_le_bytes());
+            v.extend_from_slice(message);
             v
         }
     }
@@ -419,5 +444,55 @@ mod tests {
         assert_eq!(Protocol::parse("dhcpv6"), Some(Protocol::Dhcpv6));
         assert_eq!(Protocol::parse("BMP"), Some(Protocol::Bmp));
         assert_eq!(Protocol::parse("nope"), None);
+        assert_eq!(Protocol::parse("commbuffer"), Some(Protocol::CommBuffer));
+        assert_eq!(Protocol::parse("ffi"), Some(Protocol::CommBuffer));
+    }
+
+    /// Boundary-fuzzer case: mutating the CommBuffer seed's MessageLength
+    /// field (the double fetch across the C↔Rust FFI seam) is caught by
+    /// the `rust_uefi_module` confused-deputy detection rule.
+    ///
+    /// This documents the pattern the Phase 5 boundary fuzzer found: a
+    /// well-formed `EFI_SMM_COMMUNICATE_HEADER` whose declared length is
+    /// inflated in flight turns any validate-then-consume handler into an
+    /// out-of-bounds copy — codified as the "CommBuffer confused-deputy
+    /// pattern" finding.
+    #[test]
+    fn commbuffer_boundary_fuzz_finds_confused_deputy() {
+        use crate::detector::{Detector, Severity};
+
+        // Well-formed seed: declared length must equal the message length.
+        let seed = generate_seed(Protocol::CommBuffer);
+        let declared = u32::from_le_bytes(seed[16..20].try_into().unwrap()) as usize;
+        assert_eq!(declared, seed.len() - 20, "seed must be well-formed");
+
+        // Quiet on the well-formed buffer (no confused-deputy finding).
+        let detector = crate::detectors::rust_uefi_module::RustUefiModuleDetector::new();
+        let clean = tempfile_clean(&seed);
+        let findings = detector.detect(clean.path()).unwrap();
+        assert!(!findings
+            .iter()
+            .any(|f| f.title.contains("confused-deputy") && f.severity >= Severity::Critical));
+
+        // LengthOverflow mutation: u32::MAX in the MessageLength field —
+        // exactly what an attacker writes between the two fetches.
+        let mut mutated = seed.clone();
+        mutated[16..20].copy_from_slice(&u32::MAX.to_le_bytes());
+        let dirty = tempfile_clean(&mutated);
+        let findings = detector.detect(dirty.path()).unwrap();
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.title.contains("confused-deputy") && f.severity >= Severity::Critical),
+            "boundary fuzzer's double-fetch mutation must be detected: {findings:?}"
+        );
+    }
+
+    fn tempfile_clean(data: &[u8]) -> tempfile::NamedTempFile {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        f
     }
 }

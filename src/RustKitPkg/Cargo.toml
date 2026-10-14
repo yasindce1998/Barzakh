@@ -1,0 +1,48 @@
+[package]
+name = "rustkit"
+version = "0.1.0"
+edition = "2021"
+description = "Barzakh RustKitPkg — no_std Rust UEFI DXE/Standalone-MM research modules (simulation-first)"
+license = "BSD-2-Clause-Patent"
+publish = false
+
+# NOTE: deliberately NOT a member of the barzakh-scanner-rs workspace.
+# This crate is firmware: it builds for x86_64-unknown-uefi with
+#   cargo build --release --target x86_64-unknown-uefi
+# and is unit-tested on the host with
+#   cargo test
+# (host tests run with std, via #![cfg_attr(not(test), no_std)]).
+
+[lib]
+crate-type = ["lib"]
+
+# The firmware image (BOOTX64.EFI). Built only for the UEFI target with
+#   cargo build --release --target x86_64-unknown-uefi --features firmware
+# `required-features` keeps `cargo test` (host) from linking a no_main
+# freestanding binary against the host std.
+[[bin]]
+name = "rustkit-dxe"
+path = "src/main.rs"
+required-features = ["firmware"]
+test = false
+
+[dependencies]
+r-efi = { version = "7.1", package = "r-efi" }
+
+[features]
+default = []
+# Enables the [[bin]] firmware target (see above).
+firmware = []
+# FUNCTIONAL build: real hardware paths execute. Lab-only, behind the
+# research-use gate. Mirrors BootkitPkg's BarzakhMode.h discipline:
+# functional requires barzakh_research or the crate refuses to compile.
+functional = ["barzakh_research"]
+barzakh_research = []
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true

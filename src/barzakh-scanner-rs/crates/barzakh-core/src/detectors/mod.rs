@@ -39,6 +39,7 @@ pub mod cxl_device;
 pub mod debug_interface;
 pub mod dell_bios_connect;
 pub mod differ;
+pub mod dmar_enforcement;
 pub mod dxe_dispatcher;
 pub mod entropy;
 pub mod esp_integrity;
@@ -69,6 +70,7 @@ pub mod ios_sep_downgrade;
 pub mod ios_trustcache;
 pub mod iot_rtos;
 pub mod iot_zephyr;
+pub mod ivrs_table;
 pub mod linux_bootchain;
 pub mod logofail;
 pub mod lvfs_integrity;
@@ -85,12 +87,14 @@ pub mod nlp_strings;
 pub mod nsp_command;
 pub mod nvidia_tegra;
 pub mod nvram_entropy;
+pub mod nvram_verifier;
 pub mod open_ran;
 pub mod opensbi;
 pub mod optionrom;
 pub mod pcr;
 pub mod pcr_oracle;
 pub mod pcr_replay;
+pub mod pe_loader_bypass;
 pub mod pei_implant;
 pub mod pixiefail;
 pub mod pluton;
@@ -103,6 +107,7 @@ pub mod riscv_bootrom;
 pub mod riscv_debug;
 pub mod rowhammer;
 pub mod runtime;
+pub mod rust_uefi_module;
 pub mod s3_bootscript;
 pub mod satellite_bus;
 pub mod satellite_ground_station;
@@ -213,6 +218,11 @@ pub fn create_all_detectors(baseline: Option<Baseline>) -> Vec<Box<dyn Detector>
         Box::new(android_vendor_dlkm::AndroidVendorDlkmDetector::new()),
         Box::new(android_bootconfig::AndroidBootconfigDetector::new()),
         Box::new(iommu_dmar::IommuDmarDetector::new()),
+        Box::new(dmar_enforcement::DmarEnforcementDetector::new()),
+        Box::new(ivrs_table::IvrsTableDetector::new()),
+        Box::new(nvram_verifier::NvramVerifierDetector::new()),
+        Box::new(pe_loader_bypass::PeLoaderBypassDetector::new()),
+        Box::new(rust_uefi_module::RustUefiModuleDetector::new()),
         Box::new(secureboot_dbx::SecurebootDbxDetector::new()),
         Box::new(apple_img4::AppleImg4Detector::new()),
         Box::new(windows_bootchain::WindowsBootchainDetector::new()),

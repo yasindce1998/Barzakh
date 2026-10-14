@@ -1,0 +1,22 @@
+# RustKit C↔Rust FFI confused-deputy chain (Phase 5 threat model).
+# Models: unsigned Rust-UEFI implant → CommBuffer double fetch → SMM
+# persistence, the Patina-era attack surface.
+[scenario]
+name = "rustkit-ffi-chain"
+description = "C-to-Rust FFI confused-deputy abuse via RustKit implant and CommBuffer TOCTOU"
+architecture = "x86_64"
+mitre = ["T1542.001", "T1068", "T1553.002"]
+
+[[stages]]
+payload = "rustkit_implant"
+label = "implant-load"
+
+[[stages]]
+payload = "commbuffer_toctou"
+label = "double-fetch"
+depends_on = ["implant-load"]
+
+[[stages]]
+payload = "runtime_services_hook"
+label = "smm-persistence"
+depends_on = ["double-fetch"]

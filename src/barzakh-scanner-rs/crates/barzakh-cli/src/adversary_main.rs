@@ -227,6 +227,11 @@ struct EspBuildArgs {
     /// ESP image size in MB
     #[arg(short, long, default_value = "64")]
     size: u32,
+
+    /// Build a real FAT16 filesystem bootable by OVMF, with the payload
+    /// as \EFI\BOOT\BOOTX64.EFI (default is the synthetic scan image)
+    #[arg(long, default_value = "false")]
+    bootable: bool,
 }
 
 // ─── InjectSingle ──────────────────────────────────────────────────────────
@@ -538,13 +543,30 @@ fn cmd_esp_build(args: EspBuildArgs) -> Result<()> {
 
     let payload_data = std::fs::read(&args.payload)?;
     let builder = EspImageBuilder::new(args.size);
-    builder.build_with_payload(&payload_data, &args.output)?;
+    if args.bootable {
+        let geo = builder.build_bootable(&payload_data, &args.output)?;
+        println!(
+            "{} Bootable FAT16 ESP written to: {}",
+            "✓".green().bold(),
+            args.output.display()
+        );
+        println!(
+            "  \\EFI\\BOOT\\BOOTX64.EFI: {} bytes at cluster {} ({} clusters, {}/{} clusters used)",
+            payload_data.len(),
+            geo.payload_first_cluster,
+            geo.payload_clusters,
+            geo.payload_clusters + 2,
+            geo.cluster_count
+        );
+    } else {
+        builder.build_with_payload(&payload_data, &args.output)?;
+        println!(
+            "{} ESP image written to: {}",
+            "✓".green().bold(),
+            args.output.display()
+        );
+    }
 
-    println!(
-        "{} ESP image written to: {}",
-        "✓".green().bold(),
-        args.output.display()
-    );
     println!(
         "  Payload: {} ({} bytes)",
         args.payload.display(),
