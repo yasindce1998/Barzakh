@@ -92,6 +92,7 @@ pub mod psp_debug_unlock;
 pub mod psp_tamper;
 pub mod psp_trustlet_inject;
 pub mod psp_version_rollback;
+pub mod pxe_icmp_overflow;
 pub mod riscv_bootrom_exploit;
 pub mod riscv_dmi_unlock;
 pub mod riscv_opensbi;
@@ -157,6 +158,7 @@ pub fn create_all_payloads() -> Vec<Box<dyn Payload>> {
         Box::new(acpi_backdoor::AcpiBackdoorPayload),
         Box::new(logofail_image::LogofailImagePayload),
         Box::new(pixiefail_dhcp::PixiefailDhcpPayload),
+        Box::new(pxe_icmp_overflow::PxeIcmpOverflowPayload),
         Box::new(blacklotus_mok::BlacklotusMokPayload),
         Box::new(psp_tamper::PspTamperPayload),
         Box::new(boot_guard_bypass::BootGuardBypassPayload),

@@ -102,6 +102,7 @@ pub mod pmp_bypass;
 pub mod psp_secure_debug;
 pub mod psp_trustlets;
 pub mod psp_version_chain;
+pub mod pxe_icmp_overflow;
 pub mod reloader;
 pub mod riscv_bootrom;
 pub mod riscv_debug;
@@ -175,6 +176,7 @@ pub fn create_all_detectors(baseline: Option<Baseline>) -> Vec<Box<dyn Detector>
         Box::new(acpi_integrity::AcpiIntegrityDetector::new()),
         Box::new(logofail::LogofailDetector::new()),
         Box::new(pixiefail::PixiefailDetector::new()),
+        Box::new(pxe_icmp_overflow::PxeIcmpOverflowDetector::new()),
         Box::new(blacklotus::BlacklotusDetector::new()),
         Box::new(amd_psp::AmdPspDetector::new()),
         Box::new(boot_guard::BootGuardDetector::new()),
