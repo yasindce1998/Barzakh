@@ -365,6 +365,7 @@ fn cmd_generate(args: GenerateArgs) -> Result<()> {
     let config = PayloadConfig {
         arch: args.arch.into(),
         size: args.size,
+        dormant: false,
     };
 
     println!(
@@ -595,6 +596,7 @@ fn cmd_inject_single(args: InjectSingleArgs) -> Result<()> {
     let config = PayloadConfig {
         arch: args.arch.into(),
         size,
+        dormant: false,
     };
 
     println!(

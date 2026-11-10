@@ -244,6 +244,7 @@ pub fn run_scenario(scenario: &Scenario, output_dir: &Path) -> Result<ScenarioRu
         let config = PayloadConfig {
             arch: crate::Arch::X86_64,
             size: 0x10000,
+            dormant: false,
         };
         let data = payload.generate(&config)?;
         let file = output_dir.join(format!("stage-{:02}-{}.bin", stages.len() + 1, stage.label));

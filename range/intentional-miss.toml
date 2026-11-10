@@ -1,0 +1,44 @@
+# Intentional-miss suite: the falsifiable negative control.
+#
+# A kill-switched (dormant) implant variant is deployed through the exact
+# same range pipeline as the armed payloads: same FAT ESP, same removable
+# boot path, same QEMU/OVMF/swtpm boot, same memory capture, same scan.
+# The implant never armed itself (expired time-bomb / air-gap detected /
+# simulation mode off): the container is present but the malicious
+# structure is disarmed, and the scanner MUST stay quiet.
+#
+# This proves the assertion path can fail: if any of the listed detectors
+# ever fired on the dormant variant, this suite would FAIL — the range
+# would have caught an over-broad detector.
+#
+# Run:  barzakh-scanner range up --suite intentional-miss
+# See:  docs/RANGE.md
+
+[range]
+name = "intentional-miss"
+description = "Kill-switched implant variants must NOT be detected"
+memory_mb = 256
+timeout_secs = 480
+smm = true
+tpm = true
+
+[[cases]]
+name = "kill-switched-boot-services-hook"
+payload = "boot_services_hook"
+dormant = true
+expect_findings = []
+expect_absent = ["hook"]
+
+[[cases]]
+name = "kill-switched-smm-timing-anomaly"
+payload = "smm_timing_anomaly"
+dormant = true
+expect_findings = []
+expect_absent = ["smm_timing"]
+
+[[cases]]
+name = "kill-switched-pxe-icmp-overflow"
+payload = "pxe_icmp_overflow"
+dormant = true
+expect_findings = []
+expect_absent = ["pxe_icmp_overflow"]

@@ -128,11 +128,27 @@ cargo test -p barzakh-adversary
 cargo test -p barzakh-adversary -- --ignored corpus_validation
 
 # Or use the standalone binary for manual testing:
-barzakh-adversary list                        # Show all 127 payloads
+barzakh-adversary list                        # Show all 134 payloads
 barzakh-adversary generate --arch x86_64      # Generate payloads
 barzakh-adversary corpus --output ./corpus    # Generate paired corpus
 barzakh-adversary validate --corpus ./corpus  # Measure detection rates
 ```
+
+### 8.1b Cyber Range (live QEMU E2E)
+
+Beyond the synthetic corpus, the cyber range boots a real QEMU q35 VM
+(SMM on, swtpm TPM 2.0, OVMF) and runs the full attack → detect →
+assert loop against live firmware, including guest-RAM capture:
+
+```bash
+barzakh-scanner range list                          # List range suites
+barzakh-scanner range up --suite ring-2 --dry-run   # Validate without QEMU
+barzakh-scanner range up --suite ring-2             # Live attack → detect → assert
+barzakh-scanner range up --suite intentional-miss   # Kill-switched variants stay undetected
+```
+
+See [RANGE.md](RANGE.md). The `range-test` CI job runs both suites on
+pushes to main and nightly.
 
 ### 8.2 Corpus Validation
 

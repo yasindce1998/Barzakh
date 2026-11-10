@@ -2,6 +2,7 @@ pub mod corpus;
 pub mod deploy;
 pub mod harness;
 pub mod payloads;
+pub mod range;
 pub mod robustness;
 pub mod scenario;
 pub mod validate;
@@ -25,6 +26,13 @@ pub enum Arch {
 pub struct PayloadConfig {
     pub arch: Arch,
     pub size: usize,
+    /// Generate the kill-switched (dormant) variant of the payload: same
+    /// binary container, but the malicious structure is disarmed — the
+    /// implant "never armed itself" (expired time-bomb, air-gap detected,
+    /// simulation mode off). Detectors must stay quiet on dormant
+    /// variants; the cyber range's intentional-miss suite asserts that.
+    #[serde(default)]
+    pub dormant: bool,
 }
 
 impl Default for PayloadConfig {
@@ -32,6 +40,7 @@ impl Default for PayloadConfig {
         Self {
             arch: Arch::X86_64,
             size: 0x10000,
+            dormant: false,
         }
     }
 }

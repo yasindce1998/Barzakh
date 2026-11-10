@@ -28,6 +28,7 @@ fn test_trampoline_x86_64_detected() {
     let config = PayloadConfig {
         arch: Arch::X86_64,
         size: 0x10000,
+        dormant: false,
     };
     let tmp = write_payload_to_temp(&payload, &config);
     let result = validate_payload(&payload, tmp.path()).unwrap();
@@ -41,6 +42,7 @@ fn test_trampoline_aarch64_detected() {
     let config = PayloadConfig {
         arch: Arch::Aarch64,
         size: 0x10000,
+        dormant: false,
     };
     let tmp = write_payload_to_temp(&payload, &config);
     let result = validate_payload(&payload, tmp.path()).unwrap();

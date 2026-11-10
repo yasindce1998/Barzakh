@@ -488,7 +488,11 @@ async fn generate_payload(
         barzakh_adversary::Arch::Armv7 => "armv7",
     };
     let size = request.size.unwrap_or(0x10000);
-    let config = barzakh_adversary::PayloadConfig { arch, size };
+    let config = barzakh_adversary::PayloadConfig {
+        arch,
+        size,
+        dormant: false,
+    };
     let data = payload
         .generate(&config)
         .map_err(|e| scan_error(e.to_string()))?;

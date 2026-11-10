@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use anyhow::Result;
@@ -56,6 +56,12 @@ enum Commands {
 
     /// Run the automated fuzzing harness
     Fuzz(FuzzArgs),
+
+    /// Boot the QEMU/OVMF/swtpm cyber range (attack → detect → assert)
+    Range {
+        #[command(subcommand)]
+        command: RangeCommands,
+    },
 
     /// Browse recorded scan history (requires --history on scan)
     History {
@@ -244,6 +250,49 @@ struct FuzzArgs {
     /// Protocol-aware fuzzing target (dhcpv6, bmp, capsule, httpboot, tcg, hii)
     #[arg(long)]
     protocol: Option<String>,
+}
+
+// ─── Range ───────────────────────────────────────────────────────────────────
+
+#[derive(Subcommand)]
+enum RangeCommands {
+    /// Boot a range suite: deploy payloads on a real QEMU/OVMF/swtpm VM,
+    /// capture guest memory, scan and assert the expected detections
+    Up {
+        /// Suite manifest: a path (range/ring-2.toml) or a name resolved
+        /// inside --range-dir
+        #[arg(long)]
+        suite: String,
+
+        /// Directory holding range/*.toml manifests
+        #[arg(long, default_value = "range")]
+        range_dir: PathBuf,
+
+        /// Validate manifests, generate payloads and plan the VM without
+        /// booting anything (works without QEMU installed)
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Keep the per-case artifact directories (serial logs, memory dumps)
+        #[arg(long)]
+        keep: bool,
+
+        /// Skip the (slow) guest-memory scan; assert on deployment
+        /// artifacts only
+        #[arg(long)]
+        skip_memory_scan: bool,
+
+        /// Output the report as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List the range suites available in a manifest directory
+    List {
+        /// Directory holding range/*.toml manifests
+        #[arg(long, default_value = "range")]
+        range_dir: PathBuf,
+    },
 }
 
 // ─── History ─────────────────────────────────────────────────────────────────
@@ -584,6 +633,7 @@ fn run(cli: Cli) -> Result<()> {
         },
         Commands::Info => cmd_info(),
         Commands::Fuzz(args) => cmd_fuzz(args),
+        Commands::Range { command } => cmd_range(command),
         Commands::History { command } => cmd_history(command),
         Commands::Kb { command } => cmd_kb(command),
         Commands::Intel { command } => cmd_intel(command),
@@ -1498,6 +1548,93 @@ fn cmd_ml(command: MlCommands) -> Result<()> {
         }
     }
     Ok(())
+}
+
+// ─── Range ───────────────────────────────────────────────────────────────────
+
+fn cmd_range(command: RangeCommands) -> Result<()> {
+    match command {
+        RangeCommands::Up {
+            suite,
+            range_dir,
+            dry_run,
+            keep,
+            skip_memory_scan,
+            json,
+        } => {
+            // Resolve the suite: a path, or a name inside --range-dir.
+            let manifest = if Path::new(&suite).exists() {
+                PathBuf::from(&suite)
+            } else {
+                let candidate = range_dir.join(format!("{suite}.toml"));
+                if !candidate.exists() {
+                    anyhow::bail!(
+                        "range suite '{suite}' not found (tried {}); pass a manifest path \
+                         or a name inside --range-dir",
+                        candidate.display()
+                    );
+                }
+                candidate
+            };
+
+            let opts = barzakh_adversary::range::RangeOptions {
+                dry_run,
+                keep,
+                skip_memory_scan,
+            };
+            let report = barzakh_adversary::range::run_suite(&manifest, &opts)?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                report.print_human();
+                println!(
+                    "\n  range {} in {:.1}s",
+                    if report.pass { "completed" } else { "FAILED" },
+                    report.duration_secs
+                );
+            }
+            if !report.pass {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        RangeCommands::List { range_dir } => {
+            let dir = std::fs::read_dir(&range_dir)
+                .map_err(|e| anyhow::anyhow!("reading {}: {e}", range_dir.display()))?;
+            let mut suites = Vec::new();
+            for entry in dir {
+                let path = entry?.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                    match barzakh_adversary::range::RangeSuite::load(&path) {
+                        Ok(suite) => suites.push((path, suite)),
+                        Err(e) => println!("  {} {} — {}", "✗".red(), path.display(), e),
+                    }
+                }
+            }
+            suites.sort_by(|a, b| a.1.range.name.cmp(&b.1.range.name));
+            for (path, suite) in &suites {
+                println!(
+                    "  {} {} — {} case(s){}",
+                    "▶".cyan(),
+                    suite.range.name,
+                    suite.cases.len(),
+                    suite
+                        .range
+                        .description
+                        .as_deref()
+                        .map(|d| format!(": {d}"))
+                        .unwrap_or_default()
+                );
+                let _ = path;
+            }
+            println!(
+                "\n  run: barzakh-scanner range up --suite <name|path> --range-dir {}",
+                range_dir.display()
+            );
+            Ok(())
+        }
+    }
 }
 
 // ─── Serve ───────────────────────────────────────────────────────────────────

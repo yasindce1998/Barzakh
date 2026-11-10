@@ -16,6 +16,7 @@ byteorder = "1"
 crc32fast = "1"
 toml = "0.8"
 tempfile = "3"
+colored = "2"
 
 [dev-dependencies]
 tempfile = "3"

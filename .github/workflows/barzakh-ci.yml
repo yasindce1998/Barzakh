@@ -315,6 +315,59 @@ jobs:
         working-directory: src/barzakh-scanner-rs
         run: cargo test -p barzakh-adversary --release -- --ignored ml_anomaly_gate
 
+  range-test:
+    name: Cyber Range (QEMU/OVMF/swtpm)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: [build-scanner-rs]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/barzakh-scanner-rs
+
+      - name: Install QEMU, OVMF and swtpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf swtpm
+
+      - name: Build Scanner
+        working-directory: src/barzakh-scanner-rs
+        run: cargo build --release -p barzakh-cli
+
+      - name: Range Dry-Run (manifest + payload validation)
+        working-directory: src/barzakh-scanner-rs
+        run: |
+          ./target/release/barzakh-scanner range up --suite ring-2 --dry-run --range-dir ../../range
+          ./target/release/barzakh-scanner range up --suite intentional-miss --dry-run --range-dir ../../range
+
+      # Full live boots run on pushes to main and the nightly schedule;
+      # PRs get the dry-run validation above (live TCG boots are slow on
+      # shared runners).
+      - name: Live Range - ring-2 (attack -> detect -> assert)
+        if: github.event_name != 'pull_request'
+        working-directory: src/barzakh-scanner-rs
+        run: ./target/release/barzakh-scanner range up --suite ring-2 --range-dir ../../range --keep
+
+      - name: Live Range - intentional-miss (kill-switched variants stay undetected)
+        if: github.event_name != 'pull_request'
+        working-directory: src/barzakh-scanner-rs
+        run: ./target/release/barzakh-scanner range up --suite intentional-miss --range-dir ../../range --keep
+
+      - name: Upload Range Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: range-artifacts
+          path: src/barzakh-scanner-rs/build/range/
+
   security-audit-rs:
     name: Security Audit (Rust)
     runs-on: ubuntu-24.04
