@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory() as tmp:
             archive_path = os.path.join(tmp, f"archive{len(archives)}")
             print(f"      downloading {url}")
             subprocess.run(
-                ["curl", "-fL", "--retry", "3", "-o", archive_path, url], check=True
+                ["curl", "-fL", "--retry", "8", "--retry-delay", "5", "--retry-all-errors", "-o", archive_path, url], check=True
             )
             got = sha256_file(archive_path)
             if got != e["archive_sha256"]:
