@@ -31,11 +31,20 @@ async fn main() -> Result<()> {
                     config.payloads_dir = dir.into();
                 }
             }
+            "--api-key" => {
+                if let Some(key) = args.next() {
+                    config.api_key = Some(key);
+                }
+            }
             "--help" | "-h" => {
                 println!(
                     "barzakh-server — REST API and web dashboard\n\n\
                      Usage: barzakh-server [--port 8420] [--db barzakh.db] \
-                     [--payloads-dir payloads]\n\n\
+                     [--payloads-dir payloads] [--api-key KEY]\n\n\
+                     Authentication: pass --api-key (or set BARZAKH_API_KEY) to require \
+                     an API key on every /api endpoint except /api/health, via the \
+                     X-API-Key or Authorization: Bearer header. Without it the server \
+                     logs a warning and serves unauthenticated.\n\n\
                      Endpoints: GET / (dashboard), /api/health, /api/detectors, /api/scans,\n\
                      POST /api/scans {{\"target\": \"<firmware path>\"}}, GET /api/scans/{{id}},\n\
                      GET /api/scans/{{id}}/report?format=json|html|markdown|sarif|csv,\n\
@@ -48,6 +57,13 @@ async fn main() -> Result<()> {
                 anyhow::bail!("unknown argument '{other}' (see --help)");
             }
         }
+    }
+
+    // Environment override: BARZAKH_API_KEY enables authentication.
+    if config.api_key.is_none() {
+        config.api_key = std::env::var("BARZAKH_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty());
     }
 
     barzakh_server::run_server(config).await

@@ -73,10 +73,26 @@ curl -s -X POST http://localhost:8420/api/scans \
 ```
 
 ```json
-{"scan_id": 7, "status": "complete", "risk_score": 87, "bootkit_detected": true}
+{"scan_id": 7, "status": "running"}
 ```
 
-The scan runs synchronously (firmware images typically scan in well under a second) and the response already carries the verdict summary. Use `GET /api/scans/{id}` for the full findings list.
+Scans run **asynchronously** (HTTP `202 Accepted`): the endpoint records a
+`running` row and executes the scan on a background worker, so even
+multi-megabyte firmware images never block the server's event loop. Poll
+`GET /api/scans/{id}` until `status` becomes `complete` (or `failed`,
+which carries an `error` message):
+
+```bash
+curl -s http://localhost:8420/api/scans/7
+```
+
+```json
+{"scan_id": 7, "target": "/srv/firmware/fw.bin", "status": "complete", "bootkit_detected": true, ...}
+```
+
+The dashboard does this polling automatically (`pollScan`). The store
+schema carries the `status`/`error` columns; databases from earlier
+versions are migrated in place on open.
 
 ### List scans
 

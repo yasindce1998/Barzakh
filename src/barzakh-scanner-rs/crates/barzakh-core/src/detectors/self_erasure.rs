@@ -18,11 +18,10 @@ const ERASURE_PATTERNS: &[&[u8]] = &[
 ];
 
 const ANTI_FORENSIC_STRINGS: &[&[u8]] = &[
-    b"DeleteVariable",
-    b"EraseFlash",
-    b"SpiErase",
+    // Unambiguous capability markers only. Generic API and utility names
+    // ("DeleteVariable", "CleanUp", "SpiErase", "EraseFlash") appear in
+    // perfectly legitimate UEFI binaries and flash tooling.
     b"WipeTrace",
-    b"CleanUp",
     b"SelfDestruct",
     b"RemoveEvidence",
 ];

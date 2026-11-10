@@ -1,0 +1,186 @@
+name: Weekly Fuzzing
+
+# Phase 0.7 of docs/ROADMAP.md: scheduled fuzzing CI.
+#
+# Runs the protocol-aware fuzzer (every supported boot-time protocol)
+# and the payload/robustness harness once a week in release mode, and
+# files a GitHub issue for every detection gap the harness reports
+# (deduplicated against open issues, so a persistent gap files once and
+# the existing issue is updated instead). Gaps do not fail the workflow
+# — the point is tracking, not blocking.
+
+on:
+  schedule:
+    # Mondays 03:00 UTC (after the daily CI quiet period).
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Protocol fuzzing iterations (harness uses ~25x fewer)'
+        required: false
+        default: '500'
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz harness + detector-gap issues
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Barzakh
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/barzakh-scanner-rs
+
+      - name: Build scanner (release)
+        working-directory: src/barzakh-scanner-rs
+        run: cargo build -p barzakh-cli --release
+
+      - name: Run protocol-aware fuzzing
+        working-directory: src/barzakh-scanner-rs
+        env:
+          ITERATIONS: ${{ github.event.inputs.iterations || '500' }}
+        run: |
+          mkdir -p fuzz-out
+          for protocol in dhcpv6 bmp capsule httpboot tcg hii; do
+            echo "::group::protocol $protocol"
+            ./target/release/barzakh-scanner fuzz \
+              --protocol "$protocol" \
+              --iterations "$ITERATIONS" \
+              --json > "fuzz-out/protocol-$protocol.json" \
+              || echo '{"error": "fuzz run failed"}' > "fuzz-out/protocol-$protocol.json"
+            echo "::endgroup::"
+          done
+
+      - name: Run robustness harness
+        working-directory: src/barzakh-scanner-rs
+        env:
+          ITERATIONS: ${{ github.event.inputs.iterations || '500' }}
+        run: |
+          # The harness multiplies iterations across all ~130 payloads
+          # (each mutation is a full detector sweep), so it gets a
+          # proportionally smaller budget: 25 iterations ≈ 5 minutes.
+          HARNESS_ITERATIONS=$(( ITERATIONS / 20 ))
+          [ "$HARNESS_ITERATIONS" -lt 5 ] && HARNESS_ITERATIONS=5
+          ./target/release/barzakh-scanner fuzz \
+            --iterations "$HARNESS_ITERATIONS" \
+            --mutate \
+            --json > fuzz-out/harness.json
+
+      - name: Upload fuzz artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-results
+          path: src/barzakh-scanner-rs/fuzz-out/
+          retention-days: 90
+
+      - name: File detector-gap issues
+        working-directory: src/barzakh-scanner-rs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, subprocess, sys
+
+          repo = os.environ["REPO"]
+          run_url = os.environ["RUN_URL"]
+
+          with open("fuzz-out/harness.json") as fh:
+              report = json.load(fh)
+
+          entries = report.get("gap_report", {}).get("entries", [])
+          if not entries:
+              print("no detection gaps — nothing to file")
+              sys.exit(0)
+
+          # Group per-mutation-variant entries by payload: one issue per
+          # payload that evaded its expected detectors, listing how many
+          # mutation variants got away.
+          by_payload = {}
+          for gap in entries:
+              by_payload.setdefault(gap.get("payload_name", "unknown"), []).append(gap)
+
+          def gh(*args):
+              return subprocess.run(
+                  ["gh", *args, "--repo", repo],
+                  capture_output=True, text=True, check=False)
+
+          filed = updated = 0
+          for payload, gaps in sorted(by_payload.items()):
+              missed = sorted({m for g in gaps for m in g.get("missed_detectors", []) if m})
+              variants = sorted({g.get("mutation_variant") or "(unmutated)" for g in gaps})
+              title = f"[fuzz] detection gap: {payload}"
+              body = (
+                  f"The weekly fuzzing harness reports that mutated variants "
+                  f"of payload **{payload}** evaded their expected detectors.\n\n"
+                  f"Missed detectors: {', '.join(f'`{m}`' for m in missed)}\n\n"
+                  f"Evading mutation variants ({len(gaps)} runs): "
+                  f"{', '.join(f'`{v}`' for v in variants)}\n\n"
+                  f"Full JSON report: see the `fuzz-results` artifact of "
+                  f"[this run]({run_url}).\n\n"
+                  f"This issue was filed automatically by the weekly fuzzing "
+                  f"workflow. It will be updated while the gap persists."
+              )
+
+              # Deduplicate: search open issues with the same title.
+              search = gh("issue", "list", "--state", "open",
+                          "--search", f'"{title}" in:title')
+              existing = None
+              for line in search.stdout.splitlines():
+                  if line.strip():
+                      existing = line.split("\t")[0]
+                      break
+
+              if existing:
+                  comment = gh("issue", "comment", existing,
+                               "--body", f"Gap still present as of {run_url} "
+                                         f"({len(gaps)} evading variants).")
+                  if comment.returncode == 0:
+                      updated += 1
+                  else:
+                      print(f"warning: commenting on #{existing} failed: "
+                            f"{comment.stderr}", file=sys.stderr)
+              else:
+                  created = gh("issue", "create",
+                               "--title", title, "--body", body)
+                  if created.returncode == 0:
+                      filed += 1
+                      print(f"filed: {title}")
+                  else:
+                      print(f"error filing {title}: {created.stderr}",
+                            file=sys.stderr)
+                      # Issue creation failure should not break the cycle;
+                      # the artifact still carries the data.
+
+          print(f"detector-gap issues: {filed} filed, {updated} updated "
+                f"({len(entries)} variant-level gaps across "
+                f"{len(by_payload)} payloads)")
+          PYEOF
+
+      - name: Summary
+        working-directory: src/barzakh-scanner-rs
+        run: |
+          echo "## Weekly fuzzing summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          for f in fuzz-out/protocol-*.json; do
+            echo "--- $f" >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "--- harness" >> "$GITHUB_STEP_SUMMARY"
+          python3 -c "import json; r=json.load(open('fuzz-out/harness.json')); print(json.dumps({k: r[k] for k in ('total_runs','duration_secs') if k in r}, indent=1)); print('gaps:', r['gap_report']['total_gaps'])" >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

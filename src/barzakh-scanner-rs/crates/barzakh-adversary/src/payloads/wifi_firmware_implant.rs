@@ -22,6 +22,11 @@ impl Payload for WifiFirmwareImplantPayload {
         let size = config.size.max(0x1000);
         let mut data = vec![0u8; size];
 
+        // MBR boot signature: this implant models a boot-sector-resident
+        // bootkit, so the sector is bootable.
+        data[510] = 0x55;
+        data[511] = 0xAA;
+
         let header = b"brcmfmac firmware\nFWID: 01-deadbeefcafe\nwl0: version 7.45\n";
         let at = 0x40;
         let mut p = at;

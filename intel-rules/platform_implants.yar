@@ -8,7 +8,7 @@ rule Automotive_CAN_Backdoor
     description = "ECU backdoor emitting CAN injection frames"
   strings:
     $ecu = "ECU_BACKDOOR" ascii
-    $can = { CAN_INJECT }
+    $can = "CAN_INJECT"
   condition:
     $ecu
 }

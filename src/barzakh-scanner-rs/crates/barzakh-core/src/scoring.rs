@@ -153,8 +153,12 @@ impl RiskScore {
 
 /// Pluggable bootkit verdict policy.
 ///
-/// The default reproduces the historical heuristic
-/// (`critical > 0 || high >= 3`).
+/// The default is `critical > 0 || high >= 2`. High-severity findings are
+/// structurally anchored (validated option-ROM checksums, chained depex
+/// opcodes, canonical MSR loads, bounded packet windows, ...), so two
+/// independent High findings are a confident verdict; the historical
+/// `high >= 3` threshold existed to absorb noise from unanchored
+/// byte-pattern heuristics that has since been removed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerdictPolicy {
     pub critical_threshold: usize,
@@ -167,7 +171,7 @@ impl Default for VerdictPolicy {
     fn default() -> Self {
         Self {
             critical_threshold: 1,
-            high_threshold: 3,
+            high_threshold: 2,
             risk_score_threshold: None,
         }
     }
@@ -242,11 +246,11 @@ mod tests {
     }
 
     #[test]
-    fn default_policy_matches_historical_heuristic() {
+    fn default_policy_verdict_thresholds() {
         let policy = VerdictPolicy::default();
         assert!(policy.is_bootkit(1, 0, 10));
-        assert!(policy.is_bootkit(0, 3, 10));
-        assert!(!policy.is_bootkit(0, 2, 30));
+        assert!(policy.is_bootkit(0, 2, 10));
+        assert!(!policy.is_bootkit(0, 1, 30));
         assert!(!policy.is_bootkit(0, 0, 0));
     }
 

@@ -49,6 +49,7 @@ fn yara_rules_hit_known_adversary_markers() {
         .generate(&barzakh_adversary::PayloadConfig {
             arch: barzakh_adversary::Arch::X86_64,
             size: 0x10000,
+            dormant: false,
         })
         .unwrap();
 
@@ -80,6 +81,7 @@ fn ioc_feed_detector_flags_known_adversary_markers() {
         .generate(&barzakh_adversary::PayloadConfig {
             arch: barzakh_adversary::Arch::X86_64,
             size: 0x10000,
+            dormant: false,
         })
         .unwrap();
 

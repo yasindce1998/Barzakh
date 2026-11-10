@@ -23,14 +23,21 @@ impl Payload for ClkscrewVoltagePayload {
         //   ARM PMIC I2C address bytes: 0x60 or 0x62 followed by a register byte <= 0x7F
         //   and a non-zero value byte (PMIC voltage regulator write via I2C bus).
 
-        // Place multiple PMIC I2C voltage regulator writes
+        // Place PMIC I2C voltage regulator write bursts. The voltage_glitch
+        // detector requires a burst: >= 4 transactions to the same PMIC I2C
+        // address within 128 bytes, with value bytes inside a narrow band —
+        // the signature of nudging a voltage operating point (CLKscrew).
         let pmic_sequences = [
-            (0x200, 0x60u8, 0x10u8, 0xA0u8), // PMIC addr 0x60, reg 0x10, val 0xA0
-            (0x220, 0x60, 0x11, 0xB0),       // Different register, different voltage
-            (0x240, 0x62, 0x20, 0xC0),       // PMIC addr 0x62 (alternate)
-            (0x260, 0x60, 0x30, 0xFF),       // Max voltage setting
-            (0x280, 0x62, 0x00, 0x50),       // Min register address
-            (0x2A0, 0x60, 0x7F, 0x01),       // Max register address boundary
+            // Burst 1: PMIC addr 0x60, voltage ramp 0xA0 -> 0xB8
+            (0x200, 0x60u8, 0x10u8, 0xA0u8),
+            (0x210, 0x60, 0x11, 0xA8),
+            (0x220, 0x60, 0x12, 0xB0),
+            (0x230, 0x60, 0x13, 0xB8),
+            // Burst 2: PMIC addr 0x62 (alternate), ramp 0x50 -> 0x68
+            (0x280, 0x62, 0x20, 0x50),
+            (0x290, 0x62, 0x21, 0x58),
+            (0x2A0, 0x62, 0x22, 0x60),
+            (0x2B0, 0x62, 0x23, 0x68),
         ];
 
         for &(offset, addr, reg, val) in &pmic_sequences {

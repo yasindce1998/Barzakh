@@ -128,11 +128,27 @@ cargo test -p barzakh-adversary
 cargo test -p barzakh-adversary -- --ignored corpus_validation
 
 # Or use the standalone binary for manual testing:
-barzakh-adversary list                        # Show all 127 payloads
+barzakh-adversary list                        # Show all 134 payloads
 barzakh-adversary generate --arch x86_64      # Generate payloads
 barzakh-adversary corpus --output ./corpus    # Generate paired corpus
 barzakh-adversary validate --corpus ./corpus  # Measure detection rates
 ```
+
+### 8.1b Cyber Range (live QEMU E2E)
+
+Beyond the synthetic corpus, the cyber range boots a real QEMU q35 VM
+(SMM on, swtpm TPM 2.0, OVMF) and runs the full attack → detect →
+assert loop against live firmware, including guest-RAM capture:
+
+```bash
+barzakh-scanner range list                          # List range suites
+barzakh-scanner range up --suite ring-2 --dry-run   # Validate without QEMU
+barzakh-scanner range up --suite ring-2             # Live attack → detect → assert
+barzakh-scanner range up --suite intentional-miss   # Kill-switched variants stay undetected
+```
+
+See [RANGE.md](RANGE.md). The `range-test` CI job runs both suites on
+pushes to main and nightly.
 
 ### 8.2 Corpus Validation
 
@@ -154,6 +170,49 @@ The corpus generator produces paired files (`malicious_*.bin` + `clean_*.bin`) f
 | PE Injection | MZ + PE\0\0 at page-aligned offset | Passing |
 | FV Tamper | `_FVH` header checksum corruption | Passing |
 | Signature Plant | Aho-Corasick match (BlackLotus, CosmicStrand, MoonBounce) | Passing |
+
+### 8.4 Real-Firmware Corpus Validation (Phase 0.1)
+
+The synthetic corpus proves detection logic; real firmware proves
+precision. Heuristic byte-pattern detectors that look precise on
+synthetic payloads can produce enormous false-positive rates on
+production firmware volumes and signed PE binaries (compressed FVMAIN
+regions, OpenSSL tables, coincidental instruction sequences). The
+real-firmware gate enforces verdict-level cleanliness on pinned,
+hash-verified real images:
+
+* **Clean corpus** (auto-fetched, `test-data/real/clean/`):
+  * OVMF x86_64 firmware (code, secboot, microvm, vars) from the pinned
+    Arch Linux `edk2-ovmf` package via archive.archlinux.org
+  * Microsoft-signed Red Hat shim 15.8 boot loaders (`shimx64`,
+    `mmx64`, `fbx64`) from the pinned Ubuntu `shim-signed` package via
+    Launchpad
+* **Malicious corpus** (manual placement, `test-data/real/malicious/`):
+  real UEFI bootkit samples (e.g. LoJax, BlackLotus stage 2) obtained
+  from a licensed malware repository. Malware is never fetched
+  automatically — see `test-data/real/manifest.toml` for placement
+  instructions.
+
+**Usage:**
+
+```bash
+# Fetch and verify the clean corpus (~5 MB download):
+./scripts/fetch-real-corpus.sh
+
+# Run the gate (skips when the corpus is not present):
+cd src/barzakh-scanner-rs
+cargo test -p barzakh-adversary --test real_corpus -- --nocapture
+```
+
+**Thresholds enforced in CI:**
+- Clean real firmware: verdict FPR <= 10% (currently 0% on all 9 images)
+- Real malicious samples: verdict TPR >= 90% (gate active only when
+  samples are present)
+
+The fetch script verifies both the archive hash and the extracted file
+hash against `test-data/real/manifest.toml`, and is idempotent. All
+downloaded binaries are git-ignored — the repository never stores
+firmware images or malware.
 
 ## 9. Automation & CI/CD
 

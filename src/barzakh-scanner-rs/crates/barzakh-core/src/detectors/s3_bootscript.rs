@@ -22,6 +22,42 @@ impl S3BootscriptDetector {
         Self
     }
 
+    /// True when at least two well-formed script entries chain exactly
+    /// into the entry at `dispatch_off` (each predecessor's length field
+    /// advances the parse onto the next opcode).
+    fn has_chained_predecessors(&self, data: &[u8], dispatch_off: usize) -> bool {
+        const VALID_OPCODES: [u8; 3] =
+            [S3_MEM_WRITE_OPCODE, S3_IO_WRITE_OPCODE, S3_PCI_WRITE_OPCODE];
+        const MAX_LOOKBACK: usize = 128;
+        const MIN_ENTRY_LEN: usize = 2;
+        const MAX_ENTRY_LEN: usize = 64;
+        const MIN_PREDECESSORS: usize = 2;
+
+        let start_min = dispatch_off.saturating_sub(MAX_LOOKBACK);
+        for start in start_min..dispatch_off {
+            let mut pos = start;
+            let mut chain = 0usize;
+            while pos < dispatch_off {
+                if pos + 2 > data.len() {
+                    break;
+                }
+                if !VALID_OPCODES.contains(&data[pos]) {
+                    break;
+                }
+                let entry_len = data[pos + 1] as usize;
+                if !(MIN_ENTRY_LEN..=MAX_ENTRY_LEN).contains(&entry_len) {
+                    break;
+                }
+                pos += entry_len;
+                chain += 1;
+            }
+            if pos == dispatch_off && chain >= MIN_PREDECESSORS {
+                return true;
+            }
+        }
+        false
+    }
+
     fn check_bootscript_opcodes(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -38,6 +74,16 @@ impl S3BootscriptDetector {
 
                     // Entry point should be a valid address
                     if entry_point > 0x1000 && entry_point < 0xFFFFFFFF_FFFFFFFF {
+                        // Structural gate: an S3 boot script is a chain of
+                        // entries where each entry's length advances the
+                        // parse to the next opcode. A lone `03 0A` byte pair
+                        // is coincidence; require at least two well-formed
+                        // predecessor entries that chain exactly into this
+                        // DISPATCH.
+                        if !self.has_chained_predecessors(data, i) {
+                            continue;
+                        }
+
                         findings.push(
                             Finding::new(
                                 "s3_bootscript",
@@ -193,8 +239,17 @@ impl S3BootscriptDetector {
             return findings;
         }
 
+        // A corrupted table does not need per-offset enumeration: beyond a
+        // handful of entries the report is noise, and unbounded emission
+        // turned multi-MB memory dumps (megabytes of zero-filled RAM) into
+        // millions of Findings and an OOM.
+        const MAX_INTEGRITY_FINDINGS: usize = 64;
+
         let mut i = 0;
         while i + 2 < data.len() {
+            if findings.len() >= MAX_INTEGRITY_FINDINGS {
+                break;
+            }
             let opcode = data[i];
             if valid_opcodes.contains(&opcode) {
                 // Check if this is part of a boot script table by verifying
@@ -203,6 +258,20 @@ impl S3BootscriptDetector {
 
                 // Validate entry length
                 if length == 0 {
+                    // Opcode 0x00 with length 0x00 is also the signature of
+                    // erased or uninitialized memory. A genuine corrupted
+                    // entry sits among non-zero bytes; a `00 00` pair inside
+                    // a longer zero run is not one. Skip zero runs wholesale
+                    // instead of reporting every two bytes.
+                    let run_end = data.len().min(i + 16);
+                    if data[i..run_end].iter().all(|&b| b == 0) {
+                        let skip = data[i..]
+                            .iter()
+                            .position(|&b| b != 0)
+                            .unwrap_or(data.len() - i);
+                        i += skip.max(1);
+                        continue;
+                    }
                     findings.push(
                         Finding::new(
                             "s3_bootscript",
@@ -273,5 +342,73 @@ impl Detector for S3BootscriptDetector {
         findings.extend(self.check_bootscript_integrity(&data));
 
         Ok(findings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Seeds a minimal parseable 3-entry chain so the
+    /// `looks_like_bootscript` gate opens.
+    fn seed_chain(data: &mut [u8]) {
+        data[0] = S3_MEM_WRITE_OPCODE;
+        data[1] = 0x02;
+        data[2] = S3_IO_WRITE_OPCODE;
+        data[3] = 0x02;
+        data[4] = S3_PCI_WRITE_OPCODE;
+        data[5] = 0x02;
+    }
+
+    #[test]
+    fn zero_filled_memory_does_not_explode() {
+        // Regression: a parseable chain opens the integrity walk, which
+        // then crosses megabytes of zero-filled RAM. Every two zero bytes
+        // used to emit a Finding — a 256 MB memory dump OOM'd the scanner
+        // past 13 GB of RSS. Zero runs must be skipped and findings stay
+        // bounded.
+        let mut data = vec![0u8; 4 * 1024 * 1024];
+        seed_chain(&mut data);
+        let detector = S3BootscriptDetector::new();
+        let findings = detector.check_bootscript_integrity(&data);
+        assert!(findings.len() <= 64, "findings must stay bounded");
+    }
+
+    #[test]
+    fn isolated_zero_length_entry_is_reported() {
+        // A length-0 entry surrounded by non-zero data is genuine
+        // corruption and must still be reported.
+        let mut data = vec![0xAAu8; 0x1000];
+        seed_chain(&mut data);
+        data[6] = S3_MEM_WRITE_OPCODE; // opcode with length 0 …
+        data[7] = 0x00; // … embedded in non-zero context
+        let detector = S3BootscriptDetector::new();
+        let findings = detector.check_bootscript_integrity(&data);
+        assert!(findings
+            .iter()
+            .any(|f| f.title.contains("Corrupted S3 boot script entry")));
+    }
+
+    #[test]
+    fn dispatch_chain_still_detected() {
+        // The s3_bootscript_inject layout: chained entries ending in a
+        // DISPATCH with a suspicious entry point must yield the High
+        // finding the corpus gate relies on.
+        let mut data = vec![0u8; 0x2000];
+        let offset = 0x100;
+        data[offset] = S3_MEM_WRITE_OPCODE;
+        data[offset + 1] = 0x10;
+        data[offset + 0x10] = S3_IO_WRITE_OPCODE;
+        data[offset + 0x11] = 0x08;
+        let dispatch = offset + 0x18;
+        data[dispatch] = S3_DISPATCH_OPCODE;
+        data[dispatch + 1] = 0x0A;
+        data[dispatch + 2..dispatch + 10].copy_from_slice(&0x41414141_DEADBEEFu64.to_le_bytes());
+
+        let detector = S3BootscriptDetector::new();
+        let findings = detector.check_bootscript_opcodes(&data);
+        assert!(findings
+            .iter()
+            .any(|f| f.severity == Severity::High && f.title.contains("DISPATCH")));
     }
 }

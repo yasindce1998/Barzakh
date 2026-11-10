@@ -160,7 +160,9 @@ impl OpensbiDetector {
 
         let mut escalation_sites = Vec::new();
 
-        for i in 0..data.len().saturating_sub(4) {
+        // RISC-V instructions are naturally 4-byte aligned; scanning only
+        // aligned positions removes most random byte-sequence matches.
+        for i in (0..data.len().saturating_sub(4)).step_by(4) {
             let instr = u32::from_le_bytes(data[i..i + 4].try_into().unwrap_or([0; 4]));
 
             for &(csr_addr, csr_name) in mmode_csrs {
@@ -173,7 +175,12 @@ impl OpensbiDetector {
             }
         }
 
-        if escalation_sites.len() >= 2 {
+        // The sites must form a tight code sequence (an exploit stub
+        // programming several M-mode CSRs back to back), not scattered
+        // matches across the image.
+        let has_tight_sequence = escalation_sites.windows(2).any(|w| w[1].0 - w[0].0 <= 64);
+
+        if escalation_sites.len() >= 2 && has_tight_sequence {
             findings.push(
                 Finding::new(
                     "opensbi",

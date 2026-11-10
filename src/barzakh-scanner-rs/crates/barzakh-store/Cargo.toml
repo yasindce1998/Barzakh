@@ -7,7 +7,7 @@ description = "Persistent storage for Barzakh: scan history, diffing, trends and
 
 [dependencies]
 barzakh-core = { path = "../barzakh-core" }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

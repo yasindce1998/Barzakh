@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use anyhow::Result;
@@ -56,6 +56,12 @@ enum Commands {
 
     /// Run the automated fuzzing harness
     Fuzz(FuzzArgs),
+
+    /// Boot the QEMU/OVMF/swtpm cyber range (attack → detect → assert)
+    Range {
+        #[command(subcommand)]
+        command: RangeCommands,
+    },
 
     /// Browse recorded scan history (requires --history on scan)
     History {
@@ -128,6 +134,11 @@ struct ScanArgs {
     /// YARA rule file or directory (*.yar / *.yara)
     #[arg(long)]
     yara: Option<PathBuf>,
+
+    /// Define an external variable for YARA rules, NAME=VALUE
+    /// (repeatable; "true"/"false" → bool, numeric → int, else string)
+    #[arg(long = "define", value_name = "NAME=VALUE")]
+    defines: Vec<String>,
 
     /// Record the scan result into this history database
     #[arg(long)]
@@ -239,6 +250,49 @@ struct FuzzArgs {
     /// Protocol-aware fuzzing target (dhcpv6, bmp, capsule, httpboot, tcg, hii)
     #[arg(long)]
     protocol: Option<String>,
+}
+
+// ─── Range ───────────────────────────────────────────────────────────────────
+
+#[derive(Subcommand)]
+enum RangeCommands {
+    /// Boot a range suite: deploy payloads on a real QEMU/OVMF/swtpm VM,
+    /// capture guest memory, scan and assert the expected detections
+    Up {
+        /// Suite manifest: a path (range/ring-2.toml) or a name resolved
+        /// inside --range-dir
+        #[arg(long)]
+        suite: String,
+
+        /// Directory holding range/*.toml manifests
+        #[arg(long, default_value = "range")]
+        range_dir: PathBuf,
+
+        /// Validate manifests, generate payloads and plan the VM without
+        /// booting anything (works without QEMU installed)
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Keep the per-case artifact directories (serial logs, memory dumps)
+        #[arg(long)]
+        keep: bool,
+
+        /// Skip the (slow) guest-memory scan; assert on deployment
+        /// artifacts only
+        #[arg(long)]
+        skip_memory_scan: bool,
+
+        /// Output the report as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List the range suites available in a manifest directory
+    List {
+        /// Directory holding range/*.toml manifests
+        #[arg(long, default_value = "range")]
+        range_dir: PathBuf,
+    },
 }
 
 // ─── History ─────────────────────────────────────────────────────────────────
@@ -372,6 +426,18 @@ enum IntelCommands {
         #[arg(short, long)]
         target: PathBuf,
     },
+    /// Convert a STIX 2.1 bundle into a Barzakh IOC feed
+    Stix {
+        /// STIX 2.1 bundle (JSON file)
+        #[arg(short, long)]
+        input: PathBuf,
+        /// Output path for the converted IOC feed
+        #[arg(short, long, default_value = "stix-feed.json")]
+        output: PathBuf,
+        /// Feed name recorded in the output
+        #[arg(long, default_value = "stix")]
+        name: String,
+    },
 }
 
 // ─── ML ──────────────────────────────────────────────────────────────────────
@@ -411,6 +477,9 @@ struct ServeArgs {
     /// Directory where adversary payloads are materialized
     #[arg(long)]
     payloads_dir: Option<PathBuf>,
+    /// API key required by /api endpoints (or set BARZAKH_API_KEY)
+    #[arg(long)]
+    api_key: Option<String>,
 }
 
 // ─── Detectors ───────────────────────────────────────────────────────────────
@@ -564,6 +633,7 @@ fn run(cli: Cli) -> Result<()> {
         },
         Commands::Info => cmd_info(),
         Commands::Fuzz(args) => cmd_fuzz(args),
+        Commands::Range { command } => cmd_range(command),
         Commands::History { command } => cmd_history(command),
         Commands::Kb { command } => cmd_kb(command),
         Commands::Intel { command } => cmd_intel(command),
@@ -601,12 +671,18 @@ fn cmd_scan(args: ScanArgs) -> Result<()> {
         }
     }
     if let Some(yara_path) = &args.yara {
-        let detector = if yara_path.is_dir() {
+        let mut detector = if yara_path.is_dir() {
             barzakh_intel::yara::YaraRuleDetector::from_dir(yara_path)
         } else {
             barzakh_intel::yara::YaraRuleDetector::from_file(yara_path)
         }
         .map_err(|e| anyhow::anyhow!("loading YARA rules {}: {e}", yara_path.display()))?;
+        for define in &args.defines {
+            let Some((name, value)) = define.split_once('=') else {
+                anyhow::bail!("--define expects NAME=VALUE, got '{define}'");
+            };
+            detector.set_external(name, value);
+        }
         scanner.register_detector(Box::new(detector));
         if !args.quiet && !args.json {
             println!(
@@ -1372,6 +1448,44 @@ fn cmd_intel(command: IntelCommands) -> Result<()> {
                 .collect();
             println!("{}", Table::new(&rows));
         }
+        IntelCommands::Stix {
+            input,
+            output,
+            name,
+        } => {
+            println!(
+                "{} Converting STIX bundle {}",
+                "▶".cyan().bold(),
+                input.display()
+            );
+            let bundle = barzakh_intel::stix::StixBundle::load(&input)?;
+            let (feed, report) = bundle.convert(&name);
+            if feed.iocs.is_empty() {
+                println!(
+                    "{} No firmware-relevant indicators ({} indicators, {} unsupported clauses)",
+                    "○".yellow(),
+                    report.indicators,
+                    report.clauses_skipped
+                );
+            }
+            feed.save(&output)?;
+            println!(
+                "{} IOC feed written to {} — {} IOCs from {} indicators \
+                 ({} clauses converted, {} skipped, {} family attributions)",
+                "✓".green().bold(),
+                output.display(),
+                report.produced,
+                report.indicators,
+                report.clauses_converted,
+                report.clauses_skipped,
+                report.families_resolved
+            );
+            println!(
+                "{} Scan with: barzakh-scanner scan --target fw.bin --ioc-feed {}",
+                "→".cyan(),
+                output.display()
+            );
+        }
     }
     Ok(())
 }
@@ -1409,8 +1523,13 @@ fn cmd_ml(command: MlCommands) -> Result<()> {
                 report.samples, report.malicious, report.benign
             );
             println!(
-                "  Isolation forest:   TPR {:.2}  FPR {:.2}",
-                report.iforest_tpr, report.iforest_fpr
+                "  Isolation forest:   TPR {:.2}  FPR {:.2}  (TP {}  FP {}  TN {}  FN {})",
+                report.iforest_tpr,
+                report.iforest_fpr,
+                report.iforest_true_positives,
+                report.iforest_false_positives,
+                report.iforest_true_negatives,
+                report.iforest_false_negatives
             );
             println!(
                 "  Logistic regression: TPR {:.2}  FPR {:.2}  AUC {:.2}",
@@ -1431,15 +1550,108 @@ fn cmd_ml(command: MlCommands) -> Result<()> {
     Ok(())
 }
 
+// ─── Range ───────────────────────────────────────────────────────────────────
+
+fn cmd_range(command: RangeCommands) -> Result<()> {
+    match command {
+        RangeCommands::Up {
+            suite,
+            range_dir,
+            dry_run,
+            keep,
+            skip_memory_scan,
+            json,
+        } => {
+            // Resolve the suite: a path, or a name inside --range-dir.
+            let manifest = if Path::new(&suite).exists() {
+                PathBuf::from(&suite)
+            } else {
+                let candidate = range_dir.join(format!("{suite}.toml"));
+                if !candidate.exists() {
+                    anyhow::bail!(
+                        "range suite '{suite}' not found (tried {}); pass a manifest path \
+                         or a name inside --range-dir",
+                        candidate.display()
+                    );
+                }
+                candidate
+            };
+
+            let opts = barzakh_adversary::range::RangeOptions {
+                dry_run,
+                keep,
+                skip_memory_scan,
+            };
+            let report = barzakh_adversary::range::run_suite(&manifest, &opts)?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                report.print_human();
+                println!(
+                    "\n  range {} in {:.1}s",
+                    if report.pass { "completed" } else { "FAILED" },
+                    report.duration_secs
+                );
+            }
+            if !report.pass {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        RangeCommands::List { range_dir } => {
+            let dir = std::fs::read_dir(&range_dir)
+                .map_err(|e| anyhow::anyhow!("reading {}: {e}", range_dir.display()))?;
+            let mut suites = Vec::new();
+            for entry in dir {
+                let path = entry?.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                    match barzakh_adversary::range::RangeSuite::load(&path) {
+                        Ok(suite) => suites.push((path, suite)),
+                        Err(e) => println!("  {} {} — {}", "✗".red(), path.display(), e),
+                    }
+                }
+            }
+            suites.sort_by(|a, b| a.1.range.name.cmp(&b.1.range.name));
+            for (path, suite) in &suites {
+                println!(
+                    "  {} {} — {} case(s){}",
+                    "▶".cyan(),
+                    suite.range.name,
+                    suite.cases.len(),
+                    suite
+                        .range
+                        .description
+                        .as_deref()
+                        .map(|d| format!(": {d}"))
+                        .unwrap_or_default()
+                );
+                let _ = path;
+            }
+            println!(
+                "\n  run: barzakh-scanner range up --suite <name|path> --range-dir {}",
+                range_dir.display()
+            );
+            Ok(())
+        }
+    }
+}
+
 // ─── Serve ───────────────────────────────────────────────────────────────────
 
 fn cmd_serve(args: ServeArgs) -> Result<()> {
+    let api_key = args.api_key.or_else(|| {
+        std::env::var("BARZAKH_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
+    });
     let config = barzakh_server::ServerConfig {
         port: args.port,
         db_path: args.db,
         payloads_dir: args
             .payloads_dir
             .unwrap_or_else(|| PathBuf::from("payloads")),
+        api_key,
     };
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(barzakh_server::run_server(config))

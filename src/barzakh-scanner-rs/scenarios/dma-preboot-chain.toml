@@ -1,0 +1,27 @@
+# Pre-boot DMA exposure chain (CVE-2025-11901 / CVE-2025-14302 class).
+# Models: neutered VT-d enforcement → full-memory remap window → device write
+# into the DXE region before ExitBootServices.
+[scenario]
+name = "dma-preboot-chain"
+description = "Pre-boot DMA attack via DMAR tampering, remap-hole exploitation and DXE region overwrite"
+architecture = "x86_64"
+mitre = ["T1542.001", "T1200", "T1068"]
+
+[[stages]]
+payload = "dmar_neuter"
+label = "iommu-disabled"
+
+[[stages]]
+payload = "dmar_remap_hole"
+label = "remap-window"
+depends_on = ["iommu-disabled"]
+
+[[stages]]
+payload = "dma_window_bypass"
+label = "dxe-overwrite"
+depends_on = ["remap-window"]
+
+[[stages]]
+payload = "boot_services_hook"
+label = "boot-hook"
+depends_on = ["dxe-overwrite"]

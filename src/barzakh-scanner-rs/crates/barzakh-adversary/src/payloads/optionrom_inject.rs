@@ -30,6 +30,10 @@ impl Payload for OptionromInjectPayload {
         let init_offset: u16 = 0x0900;
         data[0x003..0x005].copy_from_slice(&init_offset.to_le_bytes());
 
+        // Header checksum byte at 0x06 is computed last so the 2KB ROM
+        // image sums to zero mod 256 — a ROM only loads with a valid
+        // checksum, and a realistic implant keeps it valid.
+
         // At offset 0x018: PCI Data Structure pointer = 0x001C
         let pcir_ptr: u16 = 0x001C;
         data[0x018..0x01A].copy_from_slice(&pcir_ptr.to_le_bytes());
@@ -74,6 +78,15 @@ impl Payload for OptionromInjectPayload {
                 data[offset + i] = 0xAD;
             }
         }
+
+        // Compute the ROM checksum over the declared 2KB image so it sums
+        // to zero mod 256 (bypassing any host-side "would this ROM load"
+        // structural gating in the detector).
+        let rom_end = 0x04 * 512;
+        let sum: u8 = data[0..rom_end]
+            .iter()
+            .fold(0u8, |acc, &b| acc.wrapping_add(b));
+        data[0x006] = sum.wrapping_neg(); // checksum byte at header offset 0x06
 
         Ok(data)
     }

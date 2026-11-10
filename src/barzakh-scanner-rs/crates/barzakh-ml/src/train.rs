@@ -123,9 +123,9 @@ impl TrainedModel {
         let subsample = clean_vectors.len().min(64);
         let forest = IsolationForest::fit(&clean_vectors, 32, subsample.max(2), 0x0B42_A2C7);
 
-        // Data-driven anomaly threshold: the 95th percentile of scores over
-        // the training clean vectors, so ~5% of benign images sit at the
-        // boundary regardless of the corpus's absolute score scale.
+        // Data-driven anomaly threshold: the 98th percentile of scores over
+        // the training clean vectors, so at most ~2% of benign images sit
+        // at the boundary regardless of the corpus's absolute score scale.
         let mut clean_scores: Vec<f64> = clean_vectors
             .iter()
             .map(|v| forest.anomaly_score(v))
@@ -133,7 +133,7 @@ impl TrainedModel {
         clean_scores.sort_by(|a, b| a.partial_cmp(b).expect("scores are finite"));
         let anomaly_threshold = match clean_scores.len() {
             0 => DEFAULT_ANOMALY_THRESHOLD,
-            n => clean_scores[(n as f64 * 0.95) as usize % n],
+            n => clean_scores[((n as f64 * 0.98) as usize).min(n - 1)],
         };
 
         // Classifier trained on the full labeled set.
@@ -209,10 +209,11 @@ impl TrainedModel {
                 report.iforest_true_negatives += 1;
             }
 
-            // Classifier: predicted probability above 0.5 → malicious.
+            // Classifier: predicted probability above the calibrated
+            // decision threshold → malicious.
             let probability = self.logistic_regression.predict(&vector);
             classifier_scores.push((sample.malicious, probability));
-            let classifier_flag = probability > 0.5;
+            let classifier_flag = self.logistic_regression.classify(&vector);
             let cell = if sample.malicious {
                 if classifier_flag {
                     &mut report.confusion[0][0] // actual malicious, predicted malicious

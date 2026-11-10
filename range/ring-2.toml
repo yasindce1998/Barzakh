@@ -1,0 +1,42 @@
+# Ring -2 cyber range: attack → detect → assert.
+#
+# Boots a real QEMU q35 VM (SMM emulation on, swtpm-backed TPM 2.0, OVMF
+# firmware), deploys adversary payloads through a spec-conformant FAT ESP
+# at the removable boot path (\EFI\BOOT\BOOTX64.EFI) — the firmware's
+# boot manager LoadImage()s the dropper, runs it, and the implant bytes
+# land in guest RAM — captures guest memory through the QEMU monitor, and
+# asserts the scanner's detections on every artifact.
+#
+# `expect_in_memory` additionally requires the detector to fire on the
+# captured RAM: proof the implant was actually deployed and resident in
+# the live guest, not merely present in the built artifacts.
+
+[range]
+name = "ring-2"
+description = "Ring -2 implant deployment, live-memory capture and detection"
+memory_mb = 256
+timeout_secs = 480
+smm = true
+tpm = true
+
+[[cases]]
+name = "boot-services-hook"
+payload = "boot_services_hook"
+expect_findings = ["hook"]
+expect_in_memory = ["hook"]
+
+[[cases]]
+name = "smm-timing-anomaly"
+payload = "smm_timing_anomaly"
+expect_findings = ["smm_timing"]
+
+[[cases]]
+name = "pxe-icmp-overflow"
+payload = "pxe_icmp_overflow"
+expect_findings = ["pxe_icmp_overflow"]
+
+[[cases]]
+name = "clean-golden-boot"
+payload = "none"
+expect_findings = []
+expect_absent = ["hook", "smm_timing"]

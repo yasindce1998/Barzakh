@@ -16,9 +16,11 @@ byteorder = "1"
 crc32fast = "1"
 toml = "0.8"
 tempfile = "3"
+colored = "2"
 
 [dev-dependencies]
 tempfile = "3"
+barzakh-ml = { path = "../barzakh-ml" }
 
 # cargo-binstall: release assets are raw binaries named
 # <binary>-<target-triple> (see .github/workflows/release.yml at the repo

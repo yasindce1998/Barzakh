@@ -120,12 +120,15 @@ impl Detector for EntropyAnalyzer {
                 findings.push(
                     Finding::new(
                         "entropy",
-                        Severity::High,
+                        Severity::Medium,
                         "Majority of firmware is encrypted/packed",
                         &format!(
                             "{:.1}% of blocks have entropy >= {:.1} bits/byte. \
-                             This suggests the firmware is encrypted or packed, \
-                             which is unusual for legitimate UEFI firmware.",
+                             The image is largely compressed or encrypted. Legitimate \
+                             firmware commonly ships compressed firmware volumes \
+                             (e.g. FVMAIN_COMPACT), so this alone is not an indicator \
+                             of compromise; use it to locate regions that other \
+                             detectors cannot parse.",
                             ratio * 100.0,
                             HIGH_ENTROPY_THRESHOLD
                         ),

@@ -36,11 +36,14 @@ pub mod can_inject_backdoor;
 pub mod capsule_tamper;
 pub mod ccsds_telecommand_inject;
 pub mod clkscrew_voltage;
+pub mod commbuffer_toctou;
 pub mod csme_update_tamper;
 pub mod cxl_dma_attack;
 pub mod dbx_rollback;
 pub mod dell_bios_connect;
+pub mod dma_window_bypass;
 pub mod dmar_neuter;
+pub mod dmar_remap_hole;
 pub mod dxe_depex_hijack;
 pub mod ecu_backdoor;
 pub mod esp_persistence;
@@ -75,6 +78,7 @@ pub mod msi_key_leak;
 pub mod network_boot_redirect;
 pub mod nsp_command_forge;
 pub mod nvram_capsule;
+pub mod nvram_silent_downgrade;
 pub mod obfuscated_strings;
 pub mod opal_call_hook;
 pub mod open_ran_du_tamper;
@@ -88,6 +92,7 @@ pub mod psp_debug_unlock;
 pub mod psp_tamper;
 pub mod psp_trustlet_inject;
 pub mod psp_version_rollback;
+pub mod pxe_icmp_overflow;
 pub mod riscv_bootrom_exploit;
 pub mod riscv_dmi_unlock;
 pub mod riscv_opensbi;
@@ -96,6 +101,7 @@ pub mod riscv_uefi_boot;
 pub mod rowhammer_trr_bypass;
 pub mod rtos_implant;
 pub mod runtime_services_hook;
+pub mod rustkit_implant;
 pub mod s3_bootscript_inject;
 pub mod satcom_terminal_implant;
 pub mod satellite_bus_tamper;
@@ -106,6 +112,7 @@ pub mod secureboot_reloader;
 pub mod sep_downgrade;
 pub mod sev_snp_vmpl_escape;
 pub mod signature_plant;
+pub mod signed_loader_chain;
 pub mod sim_applet_inject;
 pub mod small_cell_implant;
 pub mod smm_timing_anomaly;
@@ -135,6 +142,7 @@ pub fn create_all_payloads() -> Vec<Box<dyn Payload>> {
         Box::new(pe_inject::PeInjectPayload),
         Box::new(fv_tamper::FirmwareVolumeTamperPayload),
         Box::new(signature_plant::SignaturePlantPayload),
+        Box::new(signed_loader_chain::SignedLoaderChainPayload),
         Box::new(heci_traffic::HeciTrafficPayload),
         Box::new(me_spi_region::MeSpiRegionPayload),
         Box::new(amt_sol::AmtSolPayload),
@@ -143,12 +151,14 @@ pub fn create_all_payloads() -> Vec<Box<dyn Payload>> {
         Box::new(spi_region_tamper::SpiRegionTamperPayload),
         Box::new(smm_timing_anomaly::SmmTimingAnomalyPayload),
         Box::new(nvram_capsule::NvramCapsulePayload),
+        Box::new(nvram_silent_downgrade::NvramSilentDowngradePayload),
         Box::new(s3_bootscript_inject::S3BootscriptInjectPayload),
         Box::new(secureboot_bypass::SecurebootBypassPayload),
         Box::new(optionrom_inject::OptionromInjectPayload),
         Box::new(acpi_backdoor::AcpiBackdoorPayload),
         Box::new(logofail_image::LogofailImagePayload),
         Box::new(pixiefail_dhcp::PixiefailDhcpPayload),
+        Box::new(pxe_icmp_overflow::PxeIcmpOverflowPayload),
         Box::new(blacklotus_mok::BlacklotusMokPayload),
         Box::new(psp_tamper::PspTamperPayload),
         Box::new(boot_guard_bypass::BootGuardBypassPayload),
@@ -168,6 +178,8 @@ pub fn create_all_payloads() -> Vec<Box<dyn Payload>> {
         Box::new(sbat_rollback::SbatRollbackPayload),
         Box::new(esp_persistence::EspPersistencePayload),
         Box::new(runtime_services_hook::RuntimeServicesHookPayload),
+        Box::new(rustkit_implant::RustkitImplantPayload),
+        Box::new(commbuffer_toctou::CommbufferToctouPayload),
         Box::new(tdx_ovmf_inject::TdxOvmfInjectPayload),
         Box::new(bmc_spi_lateral::BmcSpiLateralPayload),
         Box::new(gpu_vbios_implant::GpuVbiosImplantPayload),
@@ -201,6 +213,8 @@ pub fn create_all_payloads() -> Vec<Box<dyn Payload>> {
         Box::new(android_dlkm_inject::AndroidDlkmInjectPayload),
         Box::new(android_bootconfig_inject::AndroidBootconfigInjectPayload),
         Box::new(dmar_neuter::DmarNeuterPayload),
+        Box::new(dmar_remap_hole::DmarRemapHolePayload),
+        Box::new(dma_window_bypass::DmaWindowBypassPayload),
         Box::new(dbx_rollback::DbxRollbackPayload),
         Box::new(apple_img4_downgrade::AppleImg4DowngradePayload),
         Box::new(windows_bcd_tamper::WindowsBcdTamperPayload),

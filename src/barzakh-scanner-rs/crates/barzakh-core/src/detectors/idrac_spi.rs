@@ -81,6 +81,19 @@ impl IdracSpiDetector {
     fn check_dell_oem_ipmi_spi(&self, data: &[u8]) -> Vec<Finding> {
         let mut findings = Vec::new();
 
+        // A Dell OEM IPMI write command is only meaningful in BMC-bearing
+        // firmware. Without iDRAC/racadm/IPMI context anywhere in the
+        // image, a `30 CE` byte pair is coincidence (it occurs regularly
+        // in compressed firmware volumes).
+        let has_bmc_context = data.windows(5).any(|w| w == IDRAC_MAGIC)
+            || data
+                .windows(RACADM_SPI.len())
+                .any(|w| w == &RACADM_SPI[..8])
+            || data.windows(4).any(|w| w == b"IPMI");
+        if !has_bmc_context {
+            return findings;
+        }
+
         for i in 0..data.len().saturating_sub(8) {
             if data[i] == DELL_OEM_NETFN && data[i + 1] == DELL_SPI_WRITE_CMD {
                 let cmd_end = (i + 16).min(data.len());

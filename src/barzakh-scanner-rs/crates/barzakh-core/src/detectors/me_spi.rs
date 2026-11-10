@@ -22,12 +22,9 @@ impl MeSpiDetector {
 
         // Look for Intel flash descriptor signature 0x0FF0A55A at expected offsets
         let expected_offsets: &[usize] = &[0x10, 0x14, 0x20];
-        let mut descriptor_found = false;
 
         for &offset in expected_offsets {
             if offset + 4 <= data.len() && data[offset..offset + 4] == FLASH_DESCRIPTOR_SIGNATURE {
-                descriptor_found = true;
-
                 // Validate FLMAP0/FLMAP1 pointers
                 let flmap0_offset = offset + 0x14;
                 let flmap1_offset = offset + 0x18;
@@ -71,34 +68,10 @@ impl MeSpiDetector {
             }
         }
 
-        if !descriptor_found && data.len() > 0x20 {
-            // Also scan first 4KB for the signature at any offset
-            let scan_len = data.len().min(4096);
-            let found_anywhere = data[..scan_len]
-                .windows(4)
-                .any(|w| w == FLASH_DESCRIPTOR_SIGNATURE);
-
-            if !found_anywhere && data.len() >= 4096 {
-                findings.push(
-                    Finding::new(
-                        "me_spi",
-                        Severity::High,
-                        "Flash descriptor signature anomaly",
-                        "Intel flash descriptor signature (0x0FF0A55A) not found at \
-                         expected offsets or within first 4KB. Descriptor may be missing \
-                         or corrupted.",
-                    )
-                    .with_confidence(0.60)
-                    .with_details(serde_json::json!({
-                        "expected_offsets": ["0x10", "0x14", "0x20"],
-                        "scanned_range": "0x0000-0x1000",
-                    }))
-                    .with_recommendation(
-                        "Verify flash image integrity and check for descriptor corruption.",
-                    ),
-                );
-            }
-        }
+        // Note: a *missing* descriptor is not reported. Code-only firmware
+        // images (OVMF_CODE, capsules, EFI binaries, memory dumps)
+        // legitimately contain no Intel flash descriptor; only a present
+        // but corrupted descriptor (checked above) is an anomaly.
 
         findings
     }

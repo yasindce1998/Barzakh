@@ -132,7 +132,7 @@ impl KnowledgeBase {
              arch=?7, notes=?8, cves_json=?9, known_clean=?10",
             rusqlite::params![
                 profile.sha256,
-                profile.size,
+                profile.size as i64,
                 profile.vendor,
                 profile.device,
                 profile.family,

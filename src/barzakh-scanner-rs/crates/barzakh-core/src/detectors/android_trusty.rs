@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::detector::{Detector, DetectorError, Finding, Severity};
 
-const TRUSTY_MAGIC: &[u8] = b"TRUS";
+const TRUSTY_MAGIC: &[u8] = b"TRUSTY";
 const LK_MAGIC: &[u8] = b"ANDROID";
 const TRUSTY_LOAD_ADDR_OFFSET: usize = 16;
 const SECURE_MEM_BASE: u64 = 0xB0000000;

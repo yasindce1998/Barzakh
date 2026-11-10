@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
-use axum::response::Html;
+use axum::http::{Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -29,7 +30,65 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/adversary/generate", post(generate_payload))
         .route("/api/scenarios", get(list_scenarios))
         .route("/api/schedule", get(list_schedules).post(add_schedule))
+        .layer(middleware::from_fn_with_state(state.clone(), api_key_auth))
         .with_state(state)
+}
+
+/// API-key authentication (Phase 0.3).
+///
+/// When `AppState::api_key` is set, every `/api/*` request (except the
+/// unauthenticated health probe) must present the key either as
+/// `X-API-Key: <key>` or `Authorization: Bearer <key>`. Comparison is
+/// constant-time.
+async fn api_key_auth(
+    State(state): State<Arc<AppState>>,
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let Some(expected) = state.api_key.as_deref() else {
+        // No key configured: authentication is disabled (a warning is
+        // logged at startup).
+        return next.run(request).await;
+    };
+    let path = request.uri().path();
+    if path == "/api/health" {
+        return next.run(request).await;
+    }
+
+    let provided = request
+        .headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .or_else(|| {
+            request
+                .headers()
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(str::to_owned)
+        });
+
+    match provided.as_deref() {
+        Some(key) if constant_time_eq(key.as_bytes(), expected.as_bytes()) => {
+            next.run(request).await
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "unauthorized: provide the API key via X-API-Key or Authorization: Bearer",
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Constant-time byte comparison (no early exit on first mismatch).
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 // ─── Basic endpoints ────────────────────────────────────────────────────────
@@ -71,30 +130,63 @@ struct SubmitScan {
 struct ScanSubmitted {
     scan_id: i64,
     status: &'static str,
-    risk_score: u32,
-    bootkit_detected: bool,
 }
 
+/// Submit a scan: records a `running` row immediately and executes the
+/// scan on the blocking thread pool, so large firmware images never
+/// stall the async event loop. Clients poll
+/// `GET /api/scans/{scan_id}` until `status` is `complete` or `failed`.
 async fn submit_scan(
     State(state): State<Arc<AppState>>,
     Json(request): Json<SubmitScan>,
 ) -> Result<(StatusCode, Json<ScanSubmitted>), (StatusCode, Json<serde_json::Value>)> {
-    let path = PathBuf::from(&request.target);
-    let mut scanner = barzakh_core::BarzakhScanner::new(None);
-    let result = scanner.scan(&path, None);
+    let target = PathBuf::from(&request.target);
 
-    let mut store = state.store.lock().await;
-    let scan_id = store
-        .record(&result)
-        .map_err(|e| scan_error(e.to_string()))?;
+    let scan_id = {
+        let mut store = state.store.lock().await;
+        store
+            .record_pending(&request.target)
+            .map_err(|e| scan_error(e.to_string()))?
+    };
+
+    // Run the CPU-bound scan off the event loop, then fill in the row.
+    let task_state = Arc::clone(&state);
+    tokio::spawn(async move {
+        let scan_target = target.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut scanner = barzakh_core::BarzakhScanner::new(None);
+            scanner.scan(&scan_target, None)
+        })
+        .await;
+
+        let mut store = task_state.store.lock().await;
+        match result {
+            Ok(scan) => {
+                if let Err(error) = store.complete(scan_id, &scan) {
+                    tracing::warn!("completing scan {scan_id} failed: {error}");
+                } else {
+                    tracing::info!(
+                        "scan {scan_id} of {} complete (risk {})",
+                        target.display(),
+                        scan.risk.score
+                    );
+                }
+            }
+            Err(join_error) => {
+                let message = format!("scan worker failed: {join_error}");
+                tracing::error!("{message}");
+                if let Err(error) = store.fail(scan_id, &message) {
+                    tracing::warn!("failing scan {scan_id} failed: {error}");
+                }
+            }
+        }
+    });
 
     Ok((
-        StatusCode::CREATED,
+        StatusCode::ACCEPTED,
         Json(ScanSubmitted {
             scan_id,
-            status: "complete",
-            risk_score: result.risk.score,
-            bootkit_detected: result.summary.bootkit_detected,
+            status: "running",
         }),
     ))
 }
@@ -104,7 +196,7 @@ fn record_json(record: &barzakh_store::history::ScanRecord) -> serde_json::Value
     serde_json::json!({
         "scan_id": record.id,
         "target": record.target,
-        "status": "complete",
+        "status": record.status,
         "bootkit_detected": record.bootkit_detected,
         "risk_score": record.risk_score,
         "risk_level": record.risk_level,
@@ -134,13 +226,17 @@ async fn get_scan(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let store = state.store.lock().await;
     let record = store.get(id).map_err(|_| not_found(id))?;
-    let findings = store
-        .get_findings(id)
-        .map_err(|e| scan_error(e.to_string()))?;
-    Ok(Json(serde_json::json!({
+    let findings = if record.status == "complete" {
+        store
+            .get_findings(id)
+            .map_err(|e| scan_error(e.to_string()))?
+    } else {
+        Vec::new()
+    };
+    let mut body = serde_json::json!({
         "scan_id": record.id,
         "target": record.target,
-        "status": "complete",
+        "status": record.status,
         "bootkit_detected": record.bootkit_detected,
         "risk_score": record.risk_score,
         "risk_level": record.risk_level,
@@ -154,7 +250,11 @@ async fn get_scan(
         },
         "timestamp": record.timestamp,
         "findings": findings,
-    })))
+    });
+    if let Some(error) = record.error {
+        body["error"] = serde_json::json!(error);
+    }
+    Ok(Json(body))
 }
 
 #[derive(Debug, Deserialize)]
@@ -388,7 +488,11 @@ async fn generate_payload(
         barzakh_adversary::Arch::Armv7 => "armv7",
     };
     let size = request.size.unwrap_or(0x10000);
-    let config = barzakh_adversary::PayloadConfig { arch, size };
+    let config = barzakh_adversary::PayloadConfig {
+        arch,
+        size,
+        dormant: false,
+    };
     let data = payload
         .generate(&config)
         .map_err(|e| scan_error(e.to_string()))?;
@@ -537,6 +641,7 @@ mod tests {
                 barzakh_store::kb::KnowledgeBase::open(std::path::Path::new(":memory:")).unwrap(),
             ),
             schedules: tokio::sync::Mutex::new(Vec::new()),
+            api_key: None,
             payloads_dir: std::env::temp_dir().join(format!(
                 "barzakh-server-test-payloads-{}",
                 std::process::id()
@@ -602,7 +707,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn submit_scan_records_and_lists() {
+    async fn submit_scan_runs_async_and_completes() {
         let mut router = router(test_state());
         // A minimal image the scanner will accept (all zeros).
         let dir = std::env::temp_dir().join(format!("barzakh-server-test-{}", std::process::id()));
@@ -622,10 +727,35 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        assert_eq!(status, StatusCode::CREATED, "body: {json}");
+        // Accepted immediately with a running scan id — the scan itself
+        // happens in the background.
+        assert_eq!(status, StatusCode::ACCEPTED, "body: {json}");
         let scan_id = json["scan_id"].as_i64().unwrap();
         assert!(scan_id >= 1);
-        assert_eq!(json["status"], "complete");
+        assert_eq!(json["status"], "running");
+
+        // Poll until the background scan finishes.
+        let mut final_json = serde_json::Value::Null;
+        for _ in 0..600 {
+            let (status, json) = body_json(
+                &mut router,
+                Request::builder()
+                    .uri(format!("/api/scans/{scan_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "body: {json}");
+            if json["status"] != "running" {
+                final_json = json;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert_eq!(
+            final_json["status"], "complete",
+            "scan should complete: {final_json}"
+        );
 
         let (status, json) = body_json(
             &mut router,

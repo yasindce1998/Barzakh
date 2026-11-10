@@ -1,0 +1,21 @@
+# NVRAM silent downgrade chain (CVE-2025-3052 / CVE-2024-7344 class).
+# Models: custom signed loader → unmeasured db/dbx write → runtime persistence.
+[scenario]
+name = "nvram-downgrade-chain"
+description = "Secure Boot silent downgrade via signed custom loader and unmeasured NVRAM writes"
+architecture = "x86_64"
+mitre = ["T1553.002", "T1542.001", "T1562.001"]
+
+[[stages]]
+payload = "signed_loader_chain"
+label = "loader-bypass"
+
+[[stages]]
+payload = "nvram_silent_downgrade"
+label = "nvram-tamper"
+depends_on = ["loader-bypass"]
+
+[[stages]]
+payload = "runtime_services_hook"
+label = "runtime-persistence"
+depends_on = ["nvram-tamper"]

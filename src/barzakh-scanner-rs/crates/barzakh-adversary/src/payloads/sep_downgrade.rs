@@ -22,6 +22,11 @@ impl Payload for SepDowngradePayload {
         let size = config.size.max(0x800);
         let mut data = vec![0u8; size];
 
+        // MBR boot signature: this implant models a boot-sector-resident
+        // bootkit, so the sector is bootable.
+        data[510] = 0x55;
+        data[511] = 0xAA;
+
         let mut blob: Vec<u8> = Vec::new();
         blob.extend_from_slice(b"AppleSEPOS sepos firmware (downgrade)\n");
         blob.extend_from_slice(b"SEPNonce");

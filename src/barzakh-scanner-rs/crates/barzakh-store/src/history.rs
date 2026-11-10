@@ -13,6 +13,10 @@ pub struct ScanRecord {
     pub id: i64,
     pub timestamp: String,
     pub target: String,
+    /// Lifecycle: `running` → `complete` | `failed`.
+    pub status: String,
+    /// Failure message when `status = failed`.
+    pub error: Option<String>,
     pub bootkit_detected: bool,
     pub risk_score: u32,
     pub risk_level: String,
@@ -61,6 +65,8 @@ impl ScanStore {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts TEXT NOT NULL,
                 target TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'complete',
+                error TEXT,
                 bootkit_detected INTEGER NOT NULL,
                 risk_score INTEGER NOT NULL,
                 risk_level TEXT NOT NULL,
@@ -75,6 +81,19 @@ impl ScanStore {
             CREATE INDEX IF NOT EXISTS idx_scans_ts ON scans(ts);
             CREATE INDEX IF NOT EXISTS idx_scans_target ON scans(target);",
         )?;
+        // Migration: databases created before the async-scan API have no
+        // status/error columns. Existing rows are finished scans.
+        let columns: Vec<String> = {
+            let mut stmt = conn.prepare("PRAGMA table_info(scans)")?;
+            let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            names.collect::<Result<Vec<_>, _>>()?
+        };
+        if !columns.iter().any(|c| c == "status") {
+            conn.execute_batch(
+                "ALTER TABLE scans ADD COLUMN status TEXT NOT NULL DEFAULT 'complete';
+                 ALTER TABLE scans ADD COLUMN error TEXT;",
+            )?;
+        }
         Ok(Self { conn })
     }
 
@@ -90,23 +109,77 @@ impl ScanStore {
                 result.summary.bootkit_detected as i64,
                 result.risk.score,
                 result.risk.level.to_string(),
-                result.summary.total_findings,
-                result.summary.critical_count,
-                result.summary.high_count,
-                result.summary.medium_count,
-                result.summary.low_count,
-                result.summary.info_count,
+                result.summary.total_findings as i64,
+                result.summary.critical_count as i64,
+                result.summary.high_count as i64,
+                result.summary.medium_count as i64,
+                result.summary.low_count as i64,
+                result.summary.info_count as i64,
                 serde_json::to_string(&result.findings)?,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Insert a placeholder row for a scan that is about to run in the
+    /// background (`status = running`); returns the scan id clients can
+    /// poll. The row is completed by [`ScanStore::complete`] or
+    /// [`ScanStore::fail`].
+    pub fn record_pending(&mut self, target: &str) -> anyhow::Result<i64> {
+        self.conn.execute(
+            "INSERT INTO scans (ts, target, status, bootkit_detected, risk_score, risk_level, \
+             total_findings, critical_count, high_count, medium_count, low_count, info_count, \
+             findings_json) \
+             VALUES (?1, ?2, 'running', 0, 0, 'pending', 0, 0, 0, 0, 0, 0, '[]')",
+            rusqlite::params![chrono::Utc::now().to_rfc3339(), target],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Fill in a `running` scan row with its finished result.
+    pub fn complete(&mut self, id: i64, result: &ScanResult) -> anyhow::Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE scans SET status = 'complete', error = NULL, bootkit_detected = ?2, \
+             risk_score = ?3, risk_level = ?4, total_findings = ?5, critical_count = ?6, \
+             high_count = ?7, medium_count = ?8, low_count = ?9, info_count = ?10, \
+             findings_json = ?11 WHERE id = ?1",
+            rusqlite::params![
+                id,
+                result.summary.bootkit_detected as i64,
+                result.risk.score,
+                result.risk.level.to_string(),
+                result.summary.total_findings as i64,
+                result.summary.critical_count as i64,
+                result.summary.high_count as i64,
+                result.summary.medium_count as i64,
+                result.summary.low_count as i64,
+                result.summary.info_count as i64,
+                serde_json::to_string(&result.findings)?,
+            ],
+        )?;
+        if changed == 0 {
+            anyhow::bail!("scan {id} not found");
+        }
+        Ok(())
+    }
+
+    /// Mark a `running` scan as failed with an error message.
+    pub fn fail(&mut self, id: i64, error: &str) -> anyhow::Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE scans SET status = 'failed', error = ?2 WHERE id = ?1",
+            rusqlite::params![id, error],
+        )?;
+        if changed == 0 {
+            anyhow::bail!("scan {id} not found");
+        }
+        Ok(())
+    }
+
     /// List the most recent `limit` scans (newest first).
     pub fn list(&self, limit: usize) -> anyhow::Result<Vec<ScanRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, ts, target, bootkit_detected, risk_score, risk_level, total_findings, \
-             critical_count, high_count, medium_count, low_count, info_count \
+            "SELECT id, ts, target, status, error, bootkit_detected, risk_score, risk_level, \
+             total_findings, critical_count, high_count, medium_count, low_count, info_count \
              FROM scans ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit as i64], row_to_record)?;
@@ -126,8 +199,8 @@ impl ScanStore {
     /// Fetch the full scan record for one scan.
     pub fn get(&self, id: i64) -> anyhow::Result<ScanRecord> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, ts, target, bootkit_detected, risk_score, risk_level, total_findings, \
-             critical_count, high_count, medium_count, low_count, info_count \
+            "SELECT id, ts, target, status, error, bootkit_detected, risk_score, risk_level, \
+             total_findings, critical_count, high_count, medium_count, low_count, info_count \
              FROM scans WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map([id], row_to_record)?;
@@ -220,15 +293,17 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScanRecord> {
         id: row.get(0)?,
         timestamp: row.get(1)?,
         target: row.get(2)?,
-        bootkit_detected: row.get::<_, i64>(3)? != 0,
-        risk_score: row.get::<_, i64>(4)? as u32,
-        risk_level: row.get(5)?,
-        total_findings: row.get::<_, i64>(6)? as usize,
-        critical_count: row.get::<_, i64>(7)? as usize,
-        high_count: row.get::<_, i64>(8)? as usize,
-        medium_count: row.get::<_, i64>(9)? as usize,
-        low_count: row.get::<_, i64>(10)? as usize,
-        info_count: row.get::<_, i64>(11)? as usize,
+        status: row.get(3)?,
+        error: row.get(4)?,
+        bootkit_detected: row.get::<_, i64>(5)? != 0,
+        risk_score: row.get::<_, i64>(6)? as u32,
+        risk_level: row.get(7)?,
+        total_findings: row.get::<_, i64>(8)? as usize,
+        critical_count: row.get::<_, i64>(9)? as usize,
+        high_count: row.get::<_, i64>(10)? as usize,
+        medium_count: row.get::<_, i64>(11)? as usize,
+        low_count: row.get::<_, i64>(12)? as usize,
+        info_count: row.get::<_, i64>(13)? as usize,
     })
 }
 
@@ -337,5 +412,91 @@ mod tests {
     fn missing_scan_errors() {
         let store = ScanStore::open(Path::new(":memory:")).unwrap();
         assert!(store.get(999).is_err());
+    }
+
+    #[test]
+    fn pending_complete_fail_lifecycle() {
+        let mut store = ScanStore::open(Path::new(":memory:")).unwrap();
+
+        // Pending row is pollable with status running.
+        let id = store.record_pending("/tmp/fw.bin").unwrap();
+        assert_eq!(store.get(id).unwrap().status, "running");
+
+        // Completing fills in the result.
+        let result = sample_result(
+            "/tmp/fw.bin",
+            vec![Finding::new("blacklotus", Severity::Critical, "BL", "d")],
+        );
+        store.complete(id, &result).unwrap();
+        let record = store.get(id).unwrap();
+        assert_eq!(record.status, "complete");
+        assert!(record.bootkit_detected);
+        assert_eq!(record.critical_count, 1);
+        assert!(record.error.is_none());
+        assert_eq!(store.get_findings(id).unwrap().len(), 1);
+
+        // Failing marks a running scan failed with the error message.
+        let failed = store.record_pending("/tmp/other.bin").unwrap();
+        store.fail(failed, "scan worker panicked").unwrap();
+        let record = store.get(failed).unwrap();
+        assert_eq!(record.status, "failed");
+        assert_eq!(record.error.as_deref(), Some("scan worker panicked"));
+
+        // Sync record() still produces complete rows.
+        let sync = store.record(&result).unwrap();
+        assert_eq!(store.get(sync).unwrap().status, "complete");
+    }
+
+    #[test]
+    fn migrates_pre_status_databases() {
+        // A database created before the status column existed.
+        let dir = std::env::temp_dir().join(format!(
+            "barzakh-store-migration-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("old.db");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE scans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    bootkit_detected INTEGER NOT NULL,
+                    risk_score INTEGER NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    total_findings INTEGER NOT NULL,
+                    critical_count INTEGER NOT NULL,
+                    high_count INTEGER NOT NULL,
+                    medium_count INTEGER NOT NULL,
+                    low_count INTEGER NOT NULL,
+                    info_count INTEGER NOT NULL,
+                    findings_json TEXT NOT NULL
+                );
+                INSERT INTO scans (ts, target, bootkit_detected, risk_score, risk_level,
+                    total_findings, critical_count, high_count, medium_count, low_count,
+                    info_count, findings_json)
+                VALUES ('2026-01-01', '/fw', 0, 10, 'low', 1, 0, 0, 1, 0, 0, '[]');",
+            )
+            .unwrap();
+        }
+
+        // Reopening migrates in place; old rows read back as complete.
+        let store = ScanStore::open(&db).unwrap();
+        let record = store.get(1).unwrap();
+        assert_eq!(record.status, "complete");
+        assert_eq!(record.target, "/fw");
+
+        // And new async rows work on the migrated schema.
+        let mut store = store;
+        let id = store.record_pending("/fw").unwrap();
+        assert_eq!(store.get(id).unwrap().status, "running");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

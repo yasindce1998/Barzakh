@@ -35,6 +35,14 @@ impl MbrDetector {
             return findings;
         }
 
+        // The IVT is only meaningful inside an actual boot sector: require
+        // the 0x55AA boot signature before interpreting bytes at 0x4C/0x54
+        // as interrupt vectors. Firmware volumes and embedded strings (FV
+        // headers, GUIDs, iPXE scripts) merely resemble hooked vectors.
+        if !(data[510] == 0x55 && data[511] == 0xAA) {
+            return findings;
+        }
+
         // Check INT 13h (disk services) - commonly hooked by bootkits
         if IVT_INT13H_OFFSET + 4 <= data.len() {
             let segment = u16::from_le_bytes(

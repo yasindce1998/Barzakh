@@ -34,6 +34,10 @@ Every image (or corpus sample) is reduced to a fixed feature vector:
 | Max run length | Longest run of identical bytes | Padding/erased regions |
 | High-entropy window | Max/mean entropy over sliding windows | Localized encryption that global entropy dilutes |
 | String count | Extracted ASCII strings | Anomalous string densities typical of implants |
+| Content islands | Nonzero runs separated by ≥ 4 zero bytes | Injected code/data lands at several distinct offsets; benign blobs are one contiguous region |
+| Binary content ratio | Non-printable fraction of nonzero bytes | Machine code and binary structures vs. legitimate string tables |
+| Valid PE chains | `MZ` headers with `PE\0\0` at a plausible `e_lfanew` | Embedded executables form valid chains; coincidental `MZ` bytes do not |
+| FFS file count | Plausible PI FFS headers (aligned, valid state/type/checksum) | Real firmware-volume layout proxy |
 
 Features feed both the isolation forest and the logistic-regression classifier.
 
@@ -48,6 +52,16 @@ The isolation forest flags images whose feature vectors are *easy to isolate* �
 - Emits a finding when the score exceeds the model's threshold
 - Severity is proportional to the score distance above threshold
 
+Two scoring details matter on real corpora:
+
+- **Dead-split avoidance:** trees re-draw a feature when the drawn feature
+  is constant in the subsample (a constant feature cannot split and would
+  terminate the branch early, wasting tree depth for every sample).
+- **Degenerate-range penalties:** features that were *constant* across the
+  benign training data (zero-width envelope) are still tracked — any real
+  deviation of a benign-invariant property is itself a strong anomaly
+  indicator.
+
 Because it is unsupervised, `ml_anomaly` runs on every scan by default once a model has been trained and registered.
 
 ---
@@ -59,7 +73,10 @@ A supervised binary classifier (malicious vs. benign) trained on corpus features
 1. `barzakh-adversary corpus` generates labeled malicious + clean pairs
 2. Features are extracted per sample
 3. Weights are fitted by gradient descent (fixed learning rate, L2 regularization)
-4. The trained model emits a probability; ≥ 0.5 (configurable) → malicious
+4. The decision threshold is calibrated on the training data to maximize
+   TPR − FPR (Youden's J), so the operating point tracks the score
+   distribution instead of assuming a well-calibrated 0.5
+5. The trained model emits a probability above the threshold → malicious
 
 The classifier complements the deterministic detectors: where a signature detector asks *"is this BlackLotus?"*, the classifier asks *"does this look like any implant we've seen?"*.
 
@@ -149,7 +166,8 @@ Retrain whenever the corpus grows — the adversary's payload generators evolve 
   "version": 1,
   "trained_at": "2026-10-13T09:00:00Z",
   "features": ["log2_size", "entropy", "printable_ratio", "zero_ratio", "mz_count",
-               "fvh_count", "max_run_length", "high_entropy_window", "string_count"],
+               "fvh_count", "max_run_length", "high_entropy_window", "string_count",
+               "content_islands", "binary_content_ratio", "valid_pe_chains", "ffs_file_count"],
   "isolation_forest": {
     "trees": [/* serialized split/leaf nodes */],
     "subsample_size": 256,
@@ -172,8 +190,8 @@ Retrain whenever the corpus grows — the adversary's payload generators evolve 
 |-------|---------|
 | `features` | Ordered feature names — vectors must match at inference time |
 | `isolation_forest` | Serialized trees, feature normalization, and training ranges |
-| `logistic_regression` | Fitted weights/bias and training metadata |
-| `anomaly_threshold` | Data-driven anomaly cutoff (95th percentile of clean training scores) |
+| `logistic_regression` | Fitted weights/bias, calibrated decision threshold, and training metadata |
+| `anomaly_threshold` | Data-driven anomaly cutoff (98th percentile of clean training scores, targeting FPR ≤ 2%) |
 | `corpus_stats` | Provenance: what the model was trained on |
 
 **Compatibility rule:** the scanner refuses to apply a model whose `features` list differs from the runtime extractor's — retrain after any feature-set change.

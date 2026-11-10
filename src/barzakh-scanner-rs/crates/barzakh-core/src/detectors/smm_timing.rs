@@ -32,6 +32,16 @@ impl SmmTimingDetector {
                         u64::from_le_bytes(data[i + 8..i + 16].try_into().unwrap_or([0; 8]));
                     // Lock bit is bit 0
                     if mask_value != 0 && (mask_value & 0x01) == 0 {
+                        // Structural sanity: TSEG masks are address masks
+                        // with the top bits set (e.g. 0xFFF00000) and
+                        // megabyte-aligned; anything else is noise from
+                        // ordinary firmware data.
+                        let mask_plausible = (mask_value & 0xFFFFF) == 0
+                            && (mask_value >> 32) == 0
+                            && (mask_value & 0xFFF0_0000) == 0xFFF0_0000;
+                        if !mask_plausible {
+                            continue;
+                        }
                         findings.push(
                             Finding::new(
                                 "smm_timing",
@@ -73,7 +83,11 @@ impl SmmTimingDetector {
 
         for (i, window) in data.windows(2).enumerate() {
             if window == rsm_pattern {
-                // Check surrounding bytes for suspicious instructions
+                // Check the handler code immediately preceding RSM for
+                // tamper signatures. Lone 0xCC/0xEA bytes occur constantly
+                // in real SMM code and data, so require structure: a run of
+                // INT3 breakpoints, or a far JMP aimed at a TSEG-range
+                // address.
                 let context_start = i.saturating_sub(32);
                 let context_end = std::cmp::min(i + 32, data.len());
                 let context = &data[context_start..context_end];
@@ -81,18 +95,33 @@ impl SmmTimingDetector {
                 let mut suspicious = false;
                 let mut reason = String::new();
 
-                // Check for INT3 (breakpoint) near SMI handler
-                if context.contains(&0xCC) {
+                // Run of >= 2 consecutive INT3 breakpoints in handler code
+                let int3_run = context.windows(2).any(|w| w[0] == 0xCC && w[1] == 0xCC);
+                if int3_run {
                     suspicious = true;
-                    reason = "INT3 breakpoint instruction found near SMI handler".to_string();
+                    reason = "INT3 breakpoint run found in SMI handler code".to_string();
                 }
 
-                // Check for far JMP patterns (0xEA followed by address)
-                for byte in context.iter().take(context.len().saturating_sub(5)) {
-                    if *byte == 0xEA {
-                        suspicious = true;
-                        reason = "Far JMP instruction found near SMI handler".to_string();
-                        break;
+                // Far JMP (0EA offset:selector) whose target lies in a
+                // TSEG/SMRAM range — redirecting the handler into attacker
+                // memory.
+                if !suspicious {
+                    for j in 0..context.len().saturating_sub(5) {
+                        if context[j] == 0xEA {
+                            let target = u32::from_le_bytes(
+                                context[j + 1..j + 5].try_into().unwrap_or([0; 4]),
+                            );
+                            if (0x60000..=0xA0000).contains(&target)
+                                || (0x7F000000..=0x80000000).contains(&target)
+                            {
+                                suspicious = true;
+                                reason = format!(
+                                    "Far JMP to TSEG-range address 0x{:08X} in SMI handler",
+                                    target
+                                );
+                                break;
+                            }
+                        }
                     }
                 }
 

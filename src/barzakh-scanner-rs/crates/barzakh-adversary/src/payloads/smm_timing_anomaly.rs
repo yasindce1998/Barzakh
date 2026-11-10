@@ -23,8 +23,25 @@ impl Payload for SmmTimingAnomalyPayload {
         let offset = 0x100;
         let tseg_base: u64 = 0x7F800000;
         data[offset..offset + 8].copy_from_slice(&tseg_base.to_le_bytes());
-        let mask_no_lock: u32 = 0xFFF00000; // lock bit (bit 0) is CLEAR
+        let mask_no_lock: u32 = if config.dormant {
+            // Kill-switched variant: SMRAM lock engaged, healthy chipset state.
+            0xFFF00001
+        } else {
+            // Lock bit (bit 0) is CLEAR — unlocked SMRAM.
+            0xFFF00000
+        };
         data[offset + 8..offset + 12].copy_from_slice(&mask_no_lock.to_le_bytes());
+
+        if config.dormant {
+            // Kill-switched variant: intact save-state map (RIP/RSP inside
+            // SMRAM), no patch handler installed.
+            let offset = 0x400;
+            let rip: u64 = 0x7F80_1234;
+            data[offset..offset + 8].copy_from_slice(&rip.to_le_bytes());
+            let rsp: u64 = 0x7F89_5678;
+            data[offset + 8..offset + 16].copy_from_slice(&rsp.to_le_bytes());
+            return Ok(data);
+        }
 
         // At offset 0x200: SMI handler code pattern
         // INT3 (0xCC) repeated 4 times, then JMP far (0xEA + address), then RSM (0x0F 0xAA)

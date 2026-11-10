@@ -35,8 +35,33 @@ impl FtpmDetector {
             let command_size =
                 u32::from_be_bytes(window[2..6].try_into().unwrap_or([0; 4])) as usize;
 
+            // Structural gate: commandCode (big-endian u32 at offset 6)
+            // must be a defined TPM2 command code. A `80 01` tag followed
+            // by a small length is meaningless without a real command
+            // code behind it.
+            let command_code = u32::from_be_bytes(window[6..10].try_into().unwrap_or([0; 4]));
+            let plausible_cc =
+                (0x11F..=0x19F).contains(&command_code) || command_code >= 0x2000_0000;
+            if !plausible_cc {
+                continue;
+            }
+
             // Validate commandSize
             let remaining = data.len() - i;
+
+            // A real TPM2 command is small (tens to hundreds of bytes).
+            // Declared sizes in the megabytes mean the candidate is not a
+            // TPM command at all — skip instead of reporting.
+            if command_size > 4096 {
+                continue;
+            }
+
+            if command_size == 0 {
+                // A zero size means the bytes after the tag are not a
+                // header at all (zero u32s follow `80 01` constantly in
+                // ordinary code); there is nothing malformed to report.
+                continue;
+            }
 
             if command_size < 10 {
                 findings.push(

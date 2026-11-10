@@ -12,4 +12,5 @@ pub mod attack;
 pub mod cve;
 pub mod ioc;
 pub mod misp;
+pub mod stix;
 pub mod yara;

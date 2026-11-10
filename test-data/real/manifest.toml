@@ -1,0 +1,115 @@
+# Real firmware corpus — Phase 0.1 real-image validation
+#
+# Pinned, verifiable sources of legitimate firmware and signed boot
+# loaders used to enforce false-positive precision (FPR <= 10% at the
+# bootkit-verdict level), plus slots for real malware samples (placed
+# manually — never fetched automatically) used to enforce true-positive
+# recall (TPR >= 90%).
+#
+# Populate with: scripts/fetch-real-corpus.sh
+# Validate with: cargo test -p barzakh-adversary --test real_corpus
+
+version = 1
+
+# ---------------------------------------------------------------------------
+# Clean corpus: legitimate, production-signed firmware and boot loaders.
+# ---------------------------------------------------------------------------
+
+[[clean]]
+name = "shimx64.efi.signed.latest"
+description = "Red Hat shim 15.8 x86_64 boot loader, Microsoft-signed (Ubuntu shim-signed 1.58+15.8-0ubuntu1)"
+archive_url = "https://launchpad.net/ubuntu/+archive/primary/+files/shim-signed_1.58+15.8-0ubuntu1_amd64.deb"
+archive_sha256 = "ba9b5d80e5d886c30664f2bebfb5c2fcce3b9b40f16fc46cba49c19a91c8059c"
+archive_format = "deb"
+member = "usr/lib/shim/shimx64.efi.signed.latest"
+sha256 = "6fe6e1bcbe6cf6baec8e056d40361ca1aa715cc04ddcc2855351de060b84350b"
+
+[[clean]]
+name = "shimx64.efi.signed.previous"
+description = "Red Hat shim 15.8 x86_64 boot loader, previously-signed build (Ubuntu shim-signed 1.58+15.8-0ubuntu1)"
+archive_url = "https://launchpad.net/ubuntu/+archive/primary/+files/shim-signed_1.58+15.8-0ubuntu1_amd64.deb"
+archive_sha256 = "ba9b5d80e5d886c30664f2bebfb5c2fcce3b9b40f16fc46cba49c19a91c8059c"
+archive_format = "deb"
+member = "usr/lib/shim/shimx64.efi.signed.previous"
+sha256 = "f037d2f20ce5d739c95fa71435410f1d71876868b7e635adb23cdb66fcf4619a"
+
+[[clean]]
+name = "shimx64.efi.dualsigned"
+description = "Red Hat shim 15.8 x86_64 boot loader, dual-signed (Ubuntu shim-signed 1.58+15.8-0ubuntu1)"
+archive_url = "https://launchpad.net/ubuntu/+archive/primary/+files/shim-signed_1.58+15.8-0ubuntu1_amd64.deb"
+archive_sha256 = "ba9b5d80e5d886c30664f2bebfb5c2fcce3b9b40f16fc46cba49c19a91c8059c"
+archive_format = "deb"
+member = "usr/lib/shim/shimx64.efi.dualsigned"
+sha256 = "3ed8aa3591f793de2e0886d077aae950810843caac5eaf96e1436a439bf5e150"
+
+[[clean]]
+name = "mmx64.efi"
+description = "shim 15.8 MokManager utility, signed (Ubuntu shim-signed 1.58+15.8-0ubuntu1)"
+archive_url = "https://launchpad.net/ubuntu/+archive/primary/+files/shim-signed_1.58+15.8-0ubuntu1_amd64.deb"
+archive_sha256 = "ba9b5d80e5d886c30664f2bebfb5c2fcce3b9b40f16fc46cba49c19a91c8059c"
+archive_format = "deb"
+member = "usr/lib/shim/mmx64.efi"
+sha256 = "d2fa8e52fddc99dad94a0009fee23cb2478c28373b777d50b2f784eb4e96f88e"
+
+[[clean]]
+name = "fbx64.efi"
+description = "shim 15.8 fallback loader, signed (Ubuntu shim-signed 1.58+15.8-0ubuntu1)"
+archive_url = "https://launchpad.net/ubuntu/+archive/primary/+files/shim-signed_1.58+15.8-0ubuntu1_amd64.deb"
+archive_sha256 = "ba9b5d80e5d886c30664f2bebfb5c2fcce3b9b40f16fc46cba49c19a91c8059c"
+archive_format = "deb"
+member = "usr/lib/shim/fbx64.efi"
+sha256 = "8f57751703470403ff7377c26a90a810eba9f6db36f262ac6ad94d132ddc5a60"
+
+[[clean]]
+name = "OVMF_CODE.4m.fd"
+description = "OVMF x86_64 UEFI firmware image (edk2 202608-1, Arch Linux package)"
+archive_url = "https://archive.archlinux.org/packages/e/edk2-ovmf/edk2-ovmf-202608-1-any.pkg.tar.zst"
+archive_sha256 = "bee34c6036ebd0e96562b7330d2d3ddf75e240cfc44a6d506a5ccb6390eafb91"
+archive_format = "pkg.tar.zst"
+member = "usr/share/edk2/x64/OVMF_CODE.4m.fd"
+sha256 = "2febd26c0b4cf95a636a941afa37d64a552723443ed9ac72f763f6840da98cb4"
+
+[[clean]]
+name = "OVMF_CODE.secboot.4m.fd"
+description = "OVMF x86_64 UEFI firmware image with Secure Boot enabled (edk2 202608-1, Arch Linux package)"
+archive_url = "https://archive.archlinux.org/packages/e/edk2-ovmf/edk2-ovmf-202608-1-any.pkg.tar.zst"
+archive_sha256 = "bee34c6036ebd0e96562b7330d2d3ddf75e240cfc44a6d506a5ccb6390eafb91"
+archive_format = "pkg.tar.zst"
+member = "usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
+sha256 = "cc150d941d4f1d39e596dedc545384a66ccfb3c9ba5cf9bc3a54d8d427d4d88f"
+
+[[clean]]
+name = "MICROVM.4m.fd"
+description = "OVMF microvm firmware image (edk2 202608-1, Arch Linux package)"
+archive_url = "https://archive.archlinux.org/packages/e/edk2-ovmf/edk2-ovmf-202608-1-any.pkg.tar.zst"
+archive_sha256 = "bee34c6036ebd0e96562b7330d2d3ddf75e240cfc44a6d506a5ccb6390eafb91"
+archive_format = "pkg.tar.zst"
+member = "usr/share/edk2/x64/MICROVM.4m.fd"
+sha256 = "20ba6033a84b3e323dec9e5fa4ff9075811b76bcea0c980928d65ef175a61bc9"
+
+[[clean]]
+name = "OVMF_VARS.4m.fd"
+description = "OVMF x86_64 variable store, empty factory image (edk2 202608-1, Arch Linux package)"
+archive_url = "https://archive.archlinux.org/packages/e/edk2-ovmf/edk2-ovmf-202608-1-any.pkg.tar.zst"
+archive_sha256 = "bee34c6036ebd0e96562b7330d2d3ddf75e240cfc44a6d506a5ccb6390eafb91"
+archive_format = "pkg.tar.zst"
+member = "usr/share/edk2/x64/OVMF_VARS.4m.fd"
+sha256 = "5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e"
+
+# ---------------------------------------------------------------------------
+# Malicious corpus: real UEFI bootkit samples. NEVER auto-fetched.
+# Place files manually into test-data/real/malicious/ and record their
+# sha256 here so the fetcher can verify them when present.
+# ---------------------------------------------------------------------------
+
+[[malicious]]
+name = "lojax_implant_systemd_joined.bin"
+description = "LoJax UEFI bootkit — malicious systemd-joined NTFS driver implant (ESET-attributed APT28 tooling, 2018)"
+fetch = false
+note = "Obtain from a licensed malware repository (e.g. MalwareBazaar, hash-tagged 'LoJax') and place in test-data/real/malicious/. The gate uses TPR >= 90% across all present malicious samples."
+
+[[malicious]]
+name = "blacklotus_stage2.efi"
+description = "BlackLotus UEFI bootkit stage-2 EFI driver (first in-the-wild Secure Boot bypass, 2023)"
+fetch = false
+note = "Obtain from a licensed malware repository (e.g. MalwareBazaar, hash-tagged 'BlackLotus') and place in test-data/real/malicious/. The gate uses TPR >= 90% across all present malicious samples."

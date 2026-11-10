@@ -57,6 +57,7 @@ pub fn benchmark(payload_filter: Option<&str>, mutations: usize) -> Result<Robus
         let config = PayloadConfig {
             arch: payload.arch(),
             size: 0x10000,
+            dormant: false,
         };
         let original = payload.generate(&config)?;
 

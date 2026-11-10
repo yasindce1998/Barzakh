@@ -92,6 +92,7 @@ impl FuzzHarness {
             let config = PayloadConfig {
                 arch: payload.arch(),
                 size: 0x10000,
+                dormant: false,
             };
 
             let data = payload.generate(&config)?;
@@ -117,6 +118,7 @@ impl FuzzHarness {
             let config = PayloadConfig {
                 arch: payload.arch(),
                 size: 0x10000,
+                dormant: false,
             };
 
             let base_data = payload.generate(&config)?;

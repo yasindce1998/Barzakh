@@ -40,6 +40,10 @@ struct ComponentInfo {
     size: usize,
     has_authenticode: bool,
     file_type: u8,
+    /// FFS header checksum validated (sum of header bytes, with the
+    /// checksum and state fields zeroed, is zero). Real firmware files
+    /// carry valid checksums; noise-parsed "files" do not.
+    checksum_valid: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -148,6 +152,44 @@ impl AttestationDetector {
                 continue;
             }
 
+            // PI FFS header checksum: sum of all 24 header bytes with the
+            // header-checksum field (offset 16) and state field (offset 23)
+            // treated as zero must be zero. This separates real firmware
+            // files from byte sequences that merely parse.
+            let checksum_valid = {
+                let mut sum: u8 = 0;
+                for (j, &b) in data[pos..pos + 24].iter().enumerate() {
+                    if j != 16 && j != 23 {
+                        sum = sum.wrapping_add(b);
+                    }
+                }
+                sum == 0
+            };
+            if !checksum_valid {
+                pos += 8;
+                continue;
+            }
+
+            // PI FFS state byte: for a constructed, header-valid,
+            // data-valid file the state is exactly 0xF8 (erase polarity 1)
+            // or 0x07 (polarity 0). Noise that survives the checksum gate
+            // lands on other values.
+            let state = data[pos + 23];
+            let state_valid = state == 0xF8 || state == 0x07;
+            if !state_valid {
+                pos += 8;
+                continue;
+            }
+
+            // Real FFS files are 8-byte aligned within the volume (24-byte
+            // header plus data padded to 8) and carry RFC 4122 GUIDs with
+            // the variant bits (10xx xxxx) set. Noise that survives the
+            // checksum and state gates fails one of these.
+            if !size.is_multiple_of(8) || (guid_bytes[8] & 0xC0) != 0x80 {
+                pos += 8;
+                continue;
+            }
+
             let guid_str = Self::format_guid(&guid_bytes);
             let file_data = &data[pos..pos + size];
             let hash = Self::sha256_hex(file_data);
@@ -163,6 +205,7 @@ impl AttestationDetector {
                 size,
                 has_authenticode,
                 file_type,
+                checksum_valid,
             });
 
             // Align to 8-byte boundary
@@ -268,14 +311,22 @@ impl AttestationDetector {
         factors.insert("known_hash".to_string(), hash_score);
         score += hash_score * WEIGHT_KNOWN_HASH;
 
-        let level = if score >= 0.75 {
+        // Structural provenance: EDK2 FFS modules are not Authenticode
+        // signed by design (integrity comes from the FV/FFS checksums and
+        // measured boot), so a checksum-valid module inside a firmware
+        // volume is at worst of unknown provenance — never "suspicious"
+        // merely for lacking a signature. Suspicious requires a malformed
+        // file type: a type outside the PI FFS specification inside a
+        // checksum-valid file is injected structure.
+        let known_type = matches!(component.file_type, 0x01..=0x0E | 0xF0);
+        let level = if !known_type {
+            TrustLevel::Suspicious
+        } else if score >= 0.75 {
             TrustLevel::Trusted
         } else if score >= 0.50 {
             TrustLevel::PartiallyTrusted
-        } else if score >= 0.20 {
-            TrustLevel::Unknown
         } else {
-            TrustLevel::Suspicious
+            TrustLevel::Unknown
         };
 
         TrustScore {

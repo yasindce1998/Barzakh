@@ -68,6 +68,7 @@ pub fn generate_corpus(output_dir: &Path) -> Result<Vec<String>> {
         let config = PayloadConfig {
             arch: payload.arch(),
             size: 0x10000,
+            dormant: false,
         };
 
         // Generate malicious variant
@@ -95,6 +96,7 @@ pub fn generate_corpus(output_dir: &Path) -> Result<Vec<String>> {
             let config_arm = PayloadConfig {
                 arch: Arch::Aarch64,
                 size: 0x10000,
+                dormant: false,
             };
             let data = payload.generate(&config_arm)?;
             let name = "malicious_trampoline_aarch64.bin".to_string();

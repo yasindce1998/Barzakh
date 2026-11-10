@@ -15,7 +15,7 @@
                                  │
                     ┌────────────▼────────────┐   mtime change?   ┌──────────────┐
                     │      barzakh-agent      │──────────────────▶│  rescan with │
-                    │  (run | once)           │                   │ 132 detectors│
+                    │  (run | once)           │                   │ 138 detectors│
                     └──┬──────────┬───────────┘                   └──────┬───────┘
                        │          │                                      │
           ┌────────────▼───┐  ┌───▼─────────────┐          ┌────────────▼───────┐
@@ -40,6 +40,7 @@ interval_secs = 300
 siem_format = "ecs"        # ecs | cef | leef
 output = "-"               # stdout or file path
 webhook = "https://siem.example.com/hook"   # optional
+webhook_secret = "hmac-shared-secret"       # optional, enables signing
 db = "barzakh-history.sqlite"
 [targets]
 paths = ["/boot/efi/firmware.bin", "/srv/firmware/router.bin"]
@@ -51,6 +52,7 @@ paths = ["/boot/efi/firmware.bin", "/srv/firmware/router.bin"]
 | `siem_format` | `ecs` \| `cef` \| `leef` | Export format for findings events |
 | `output` | `-` or file path | Where formatted events are written (`-` = stdout) |
 | `webhook` | URL (optional) | Findings are additionally POSTed as JSON to this endpoint |
+| `webhook_secret` | string (optional) | HMAC-SHA256 signing secret for webhook deliveries |
 | `db` | file path | SQLite history DB recording every scan and finding |
 | `targets.paths` | array | Firmware images to watch |
 
@@ -105,16 +107,35 @@ All events are also appended to the history DB, so no alert is lost if the SIEM 
 
 ## 🪝 Webhook Delivery
 
-When `webhook` is set, each event is additionally delivered as an HTTP POST:
+When `webhook` is set, each event is additionally delivered as an HTTP POST. When
+`webhook_secret` is also set, every delivery is HMAC-SHA256 signed:
 
-```bash
-# Receive side (example)
-curl -s -X POST https://siem.example.com/hook \
-  -H "Content-Type: application/json" \
-  -d '{"target": "/boot/efi/firmware.bin", "severity": "critical", "detector": "blacklotus", "description": "...", "scan_id": 41}'
+```http
+POST /hook HTTP/1.1
+Content-Type: application/json
+X-Barzakh-Timestamp: 1760000000
+X-Barzakh-Signature: sha256=f3c299a8157a191de37939eb7b28bbd1f87c70eb470931c679025fb7f0f9d00f
+
+{"target": "/boot/efi/firmware.bin", "severity": "critical", "detector": "blacklotus", ...}
 ```
 
-Delivery is best-effort with retry; failures are logged and never block the monitoring loop.
+The signature is `HMAC-SHA256(secret, "<timestamp>.<body>")`, hex-encoded with a
+`sha256=` prefix. Receivers should verify it and reject timestamps outside a
+small window (e.g. 5 minutes) to defeat replay:
+
+```python
+# Receive side (example)
+import hmac, hashlib, time
+
+def verify(secret, timestamp, body, signature):
+    if abs(time.time() - int(timestamp)) > 300:
+        return False                       # replay protection
+    expected = hmac.new(secret.encode(), f"{timestamp}.".encode() + body,
+                        hashlib.sha256).hexdigest()
+    return hmac.compare_digest("sha256=" + expected, signature)
+```
+
+Delivery is best-effort; failures are logged and never block the monitoring loop.
 
 ---
 
