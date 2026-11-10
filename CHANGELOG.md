@@ -97,6 +97,108 @@ project follows semantic versioning. Dates are ISO-8601.
 - `scripts/intel-update.sh` was unparseable (missing `)` in the
   `SCRIPT_DIR` command substitution).
 
+### Phase 1 — pre-boot DMA & NVRAM threat frontier
+
+#### Added
+- Four detectors + four adversary payloads for the pre-boot attack
+  surface: `dmar_enforcement` (Intel DMAR remapping-structure walk —
+  RMRR unity mappings / full-memory remap holes, CVE-2025-11901/14302
+  class), `ivrs_table` (AMD-Vi counterpart), `nvram_verifier`
+  (authenticated-variable store cross-checked against the TCG event
+  log — unmeasured Secure Boot variable writes, CVE-2025-3052/7344
+  class, dbx-older-than-db downgrades), `pe_loader_bypass`
+  (signed-loader-maps-unsigned-child-PE, CVE-2024-7344 class, with
+  WX-section and certificate-table analysis). Payloads `dmar_remap_hole`,
+  `dma_window_bypass`, `nvram_silent_downgrade`, `signed_loader_chain`;
+  scenarios `dma-preboot-chain`, `nvram-downgrade-chain`. Docs:
+  `docs/DMA_PROTECTION.md`, `docs/NVRAM_VERIFIER.md`.
+
+### Phase 5 — pure-Rust `no_std` UEFI research package
+
+#### Added
+- `src/RustKitPkg`: a standalone Rust crate targeting
+  `x86_64-unknown-uefi` (`r_efi`) with host-testable logic — modeling
+  the C↔Rust confused-deputy boundary of the emerging Patina-era
+  firmware stack. `commbuffer` (vulnerable double-fetch validation as an
+  adversary/fuzzer oracle + hardened single-copy validation), `canary`
+  (SMRAM canary & trap-page allocator with guard bands and a checksummed
+  fault log), `mode` (kill-switch discipline mirroring BootkitPkg:
+  simulation-first default, research-gated functional mode, time-bomb,
+  air-gap). `rustkit-dxe` firmware binary boots under range OVMF
+  (q35, `smm=on`, swtpm TPM 2.0) — proven by serial markers
+  `BARZAKH-RUSTKIT-BOOTED`, `CANARY-SELFTEST-PASS`,
+  `SMI-HANDLER-SURVIVED` (evidence in `docs/evidence/`). New
+  `rust_uefi_module` detector (Rust-UEFI binary identification +
+  CommBuffer TOCTOU rule) verified against the real compiled `.efi`;
+  payloads `rustkit_implant`, `commbuffer_toctou`; scenario
+  `rustkit-ffi-chain`; CommBuffer protocol fuzz seed.
+
+### Phase 2 — cyber range (attack → detect → assert)
+
+#### Added
+- **`barzakh-scanner range up|list`** — a headless cyber range that
+  reproduces the full firmware attack loop against real VM firmware:
+  boots QEMU q35 (`smm=on`, swtpm TPM 2.0, OVMF pflash, `-display
+  none`), deploys adversary payloads through a spec-conformant FAT16
+  ESP attached as **removable USB storage** at
+  `\EFI\BOOT\BOOTX64.EFI` (the LoJax/BlackLotus vector) — wrapped as a
+  minimal *valid* x64 UEFI PE application the firmware actually
+  `LoadImage()`s and `StartImage()`s — waits for boot-completion
+  markers on serial, captures guest RAM via the QEMU monitor
+  (`pmemsave`), scans every artifact with the full detector suite and
+  asserts the expected detections. Exit code drives CI.
+- Declarative TOML suites in `range/`: **`ring-2`** (armed
+  `boot_services_hook`, `smm_timing_anomaly`, `pxe_icmp_overflow`
+  implants must be detected on the deployed artifacts; the `hook`
+  implant must also be found in the captured guest RAM
+  (`expect_in_memory`); clean golden-boot control must stay
+  verdict-clean) and **`intentional-miss`** (kill-switched dormant
+  variants deployed through the exact same pipeline must NOT be
+  detected — the falsifiable negative proving the assertion path can
+  fail).
+- Assertion semantics tuned for real firmware: expected/absent findings
+  are asserted on the deployment artifacts (deterministic,
+  implant-attributable); captured guest memory is real firmware state
+  (genuine OVMF structures legitimately trip medium-severity
+  heuristics) and is therefore recorded as live-range evidence and only
+  ever positively asserted.
+- Tool discovery without root: `BARZAKH_QEMU`/`BARZAKH_SWTPM`/
+  `BARZAKH_OVMF_CODE`/`BARZAKH_OVMF_VARS` → `PATH` →
+  `~/barzakh-tools` user prefix (installed by
+  `scripts/install-range-tools.sh`) → system OVMF paths.
+  `--dry-run`, `--keep`, `--skip-memory-scan`, `--json` modes.
+- CI: a dedicated `range-test` GitHub Actions job (QEMU + OVMF + swtpm
+  via apt) runs both suites live on pushes to `main` and nightly, with
+  dry-run manifest validation on PRs. Docs: `docs/RANGE.md`.
+
+### CVE coverage
+
+#### Added
+- **`pxe_icmp_overflow` detector + adversary payload for
+  CVE-2026-97631 / GHSA-99cj-7hg9-mp4m** (CVSS 9.5): EDK II
+  `NetworkPkg/UefiPxeBcDxe` copies oversized ICMP error messages past
+  the fixed 504-byte `EFI_PXE_BASE_CODE_MODE.IcmpError` field during
+  PXE boot — both `PxeBcIcmpErrorDpcHandle` (IPv4) and
+  `PxeBcIcmp6ErrorDpcHandle` (IPv6) enforce no length limit and advance
+  the destination by cumulative rather than per-fragment length —
+  enabling unauthenticated network attackers to corrupt DXE memory and
+  execute ring-0 code before Secure Boot. The detector requires a
+  well-formed ICMPv4 error header with embedded IPv4 header, a
+  sustained data run past the 504-byte field, and past-boundary
+  corroboration (smashed adjacent mode structure or a fake-event
+  signature); verified quiet on the 9 clean real-firmware images. A
+  dormant payload variant and a range case in both suites exercise the
+  kill-switched path.
+
+### Fixed (Phase 2 fallout)
+- **Scanner OOM on large memory dumps eliminated.** The
+  `s3_bootscript` integrity walk emitted one Finding per two bytes of
+  zero-filled RAM (a 256 MB guest-RAM capture OOM'd past 13 GB of
+  RSS). Zero runs are now skipped wholesale — erased memory is not a
+  corrupted table — and integrity findings are capped; a length-0
+  entry among non-zero bytes is still reported. Regression tests cover
+  both behaviors, and the 256 MB capture now scans in ~60 s.
+
 ## [0.5.0] — 2026-10-12
 
 ### Added

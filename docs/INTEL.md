@@ -76,6 +76,18 @@ The project ships a starter feed at `intel-feeds/barzakh-default.json` covering 
 
 `intel-update.sh` validates every feed is JSON with a `name` and an `iocs` array before installing it into `--dir` (default `./intel-feeds`).
 
+### CVE coverage
+
+Vulnerability-specific coverage pairs a native detector with an advisory:
+
+| CVE / GHSA | Component | Detector |
+|---|---|---|
+| CVE-2024-7344 / GHSA-mg5g-hj3q-qcrr | EDK II signed reloader | `reloader` |
+| CVE-2025-11901, CVE-2025-14302 | RMRR/DMA remapping | `dmar_enforcement` |
+| CVE-2025-3052, CVE-2025-7344 | NVRAM authenticated variables | `nvram_verifier` |
+| **CVE-2026-97631** / **GHSA-99cj-7hg9-mp4m** | EDK II `UefiPxeBcDxe` ICMP error overflow past the 504-byte `EFI_PXE_BASE_CODE_MODE.IcmpError` field — unauthenticated network RCE during PXE boot, pre-Secure-Boot ring-0 | `pxe_icmp_overflow` |
+
+
 ### STIX 2.1 ingestion
 
 Public and government feeds (CISA, MISP exports, TAXII collections)

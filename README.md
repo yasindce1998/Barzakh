@@ -29,13 +29,14 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 
 **Key capabilities:**
 - **21 EDK II offense modules** spanning x86_64, AArch64/Apple Silicon, and RISC-V architectures
-- **132 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
+- **138 specialized detectors** with firmware-specific heuristics and structural analysis (spanning UEFI, Intel/AMD, ARM, RISC-V, Android, Apple/iOS, wireless, telecom baseband, and satellite firmware)
+- **Cyber range** — `barzakh-scanner range up` boots a real QEMU q35 VM (SMM on, swtpm TPM 2.0, OVMF), deploys payloads through the removable USB boot path, captures guest RAM, and asserts detections end-to-end (see `docs/RANGE.md`)
 - **Threat-intelligence integration** — IOC feeds, a YARA-subset rule engine (wildcards, jumps, boolean conditions), MISP event export, and MITRE ATT&CK mapping
 - **Machine-learning analysis** — isolation-forest anomaly detection and a logistic-regression malicious/benign classifier, trainable on the adversary corpus
 - **Scan history & knowledge base** — SQLite-backed scan history with diffing/trends, and a shareable (anonymizable) firmware knowledge base
 - **Dashboard & REST API** — `barzakh-server` serves a web dashboard and JSON API (port 8420) with scheduled scans and risk-score trends
 - **Continuous monitoring** — `barzakh-agent` watches firmware targets, records history, and forwards findings to SIEMs (Elastic ECS, ArcSight CEF, QRadar LEEF) or webhooks
-- **127 adversary payload generators** for automated true-positive validation
+- **127 adversary payload generators** for automated true-positive validation, plus **5 DMA/NVRAM + Rust-UEFI frontier payloads** and the CVE-2026-97631 `pxe_icmp_overflow` payload (134 total), each with kill-switched dormant variants
 - **Full Ring -4 coverage** — CPU microcode, speculative execution, thermal/power covert channels, voltage glitching, debug interfaces, rowhammer
 - **Hardware lab testing path** — documented progression from simulation to real silicon
 
@@ -55,6 +56,7 @@ Barzakh is a full-stack firmware security research platform that models real-wor
 | **Bootkitty** (2024) | First Linux UEFI bootkit, GRUB signature bypass | `linux_bootchain` detector + `bootkitty_grub_patch` payload |
 | **CVE-2024-7344** | Signed reloader loads unsigned PE payloads | `reloader` detector + `secureboot_reloader` payload |
 | **CVE-2023-1017/1018** | TPM 2.0 reference implementation buffer overflow | `tpm_command` detector + `tpm_ref_overflow` payload |
+| **CVE-2026-97631** | EDK II UefiPxeBcDxe ICMP error overflow past the 504-byte `Mode.IcmpError` field during PXE boot | `pxe_icmp_overflow` detector + `pxe_icmp_overflow` payload (armed + dormant) |
 
 ---
 
@@ -123,7 +125,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 2. Barzakh Scanner — Detection Engine (Rust)
 
-**132 specialized detectors** organized by attack surface, plus runtime-extensible detection via TOML rules, IOC feeds, YARA-subset rules, and ML models:
+**138 specialized detectors** organized by attack surface, plus runtime-extensible detection via TOML rules, IOC feeds, YARA-subset rules, and ML models:
 
 <details>
 <summary><b>Full Detector List</b></summary>
@@ -262,6 +264,12 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | 130 | `iot_rtos` | IoT | FreeRTOS/ThreadX/Mbed image tampering — task table hooks |
 | 131 | `hpc_monitor` | HPC | Baseboard covert-channel — active cache-probe exfiltration loop |
 | 132 | `nlp_strings` | ML | String-sequence analysis — obfuscated shellcode strings, dual-use API chains |
+| 133 | `dmar_enforcement` | DMA/IOMMU | Intel DMAR remapping walk — RMRR unity mappings, forged entries, remap holes |
+| 134 | `ivrs_table` | DMA/IOMMU | AMD-Vi IVRS/IVMD walk — full-memory unity maps, forged block walks |
+| 135 | `nvram_verifier` | NVRAM | Authenticated variable store vs TCG event log — unmeasured Secure Boot writes, dbx downgrades |
+| 136 | `pe_loader_bypass` | Secure Boot | Signed loader mapping unsigned child PEs (CVE-2024-7344 class) |
+| 137 | `rust_uefi_module` | Rust UEFI | Rust-UEFI binary identification + CommBuffer confused-deputy (TOCTOU) rule |
+| 138 | `pxe_icmp_overflow` | Network/PXE | ICMP error overflow past the 504-byte `EFI_PXE_BASE_CODE_MODE.IcmpError` field (CVE-2026-97631) |
 
 </details>
 
@@ -277,7 +285,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 
 ### 3. Barzakh Adversary — Red-Team Payload Generator (Rust)
 
-**Standalone binary: `barzakh-adversary`** | **127 payload generators** that produce realistic tampered firmware images for detection validation:
+**Standalone binary: `barzakh-adversary`** | **134 payload generators** that produce realistic tampered firmware images for detection validation:
 
 ```bash
 # Standalone CLI commands (no cargo required — use the release binary)
@@ -302,6 +310,7 @@ barzakh-adversary esp --payload dxe_persistence # Build ESP image for hardware t
 | `me_dma_inject` | `me_dma` | Creates ME DMA transaction patterns |
 | `spi_region_tamper` | `spi_region` | Violates SPI region boundaries |
 | `smm_timing_anomaly` | `smm_timing` | Plants SMM handler anomalies |
+| `pxe_icmp_overflow` | `pxe_icmp_overflow` | CVE-2026-97631 — oversized ICMP error smashing past the PXE `IcmpError` field |
 | `optionrom_inject` | `optionrom` | Embeds malicious Option ROMs |
 | `acpi_backdoor` | `acpi_integrity` | Injects AML OperationRegions targeting kernel space |
 | `heci_traffic` | `heci` | Generates suspicious HECI patterns |
@@ -507,9 +516,9 @@ barzakh/
 │   │   ├── TpmAttestation/         # PCR monitoring
 │   │   └── EventLogExtractor/      # TCG event log parsing
 │   └── barzakh-scanner-rs/         # Rust workspace
-│       ├── crates/barzakh-core/    # Detection engine (132 detectors)
+│       ├── crates/barzakh-core/    # Detection engine (138 detectors)
 │       ├── crates/barzakh-cli/     # CLI binaries (barzakh-scanner + barzakh-adversary)
-│       ├── crates/barzakh-adversary/ # Red-team library (127 payload generators, scenarios, robustness)
+│       ├── crates/barzakh-adversary/ # Red-team library (134 payload generators, cyber range, scenarios, robustness)
 │       ├── crates/barzakh-intel/   # IOC feeds, YARA-subset engine, MISP export, ATT&CK mapping
 │       ├── crates/barzakh-ml/      # Isolation forest + logistic classifier + NLP string analysis
 │       ├── crates/barzakh-store/   # SQLite scan history + firmware knowledge base
@@ -637,7 +646,7 @@ cargo test -p barzakh-adversary
 cargo test -p barzakh-adversary -- --ignored corpus_validation
 
 # Or use the standalone barzakh-adversary CLI
-./target/release/barzakh-adversary list                    # List all 127 payloads
+./target/release/barzakh-adversary list                    # List all 134 payloads
 ./target/release/barzakh-adversary generate --arch x86_64  # Generate payloads
 ./target/release/barzakh-adversary corpus --output ./corpus # Generate test corpus
 ./target/release/barzakh-adversary validate --corpus ./corpus # Validate detection rates
@@ -660,7 +669,7 @@ cargo test -p barzakh-adversary -- --ignored corpus_validation
 ```bash
 cd src/barzakh-scanner-rs
 
-# Unit + integration tests (132 detectors, 127 payloads)
+# Unit + integration tests (138 detectors, 134 payloads)
 cargo test
 
 # Adversary red-team tests
@@ -686,13 +695,14 @@ For real hardware testing beyond QEMU, see [`docs/LAB_TESTING.md`](docs/LAB_TEST
 | Document | Purpose |
 |----------|---------|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture, component interactions, data flow |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Flagship platform roadmap — eBPF telemetry, DMA/NVRAM frontier, cyber range, Wasm policies, `no_std` Rust UEFI |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Flagship platform roadmap — DMA/NVRAM frontier, cyber range, `no_std` Rust UEFI; eBPF telemetry and Wasm policies are owned by [Warmor](https://github.com/yasindce1998/warmor) |
 | [`docs/ANDROID_BOOT.md`](docs/ANDROID_BOOT.md) | Android boot security — 9 modules covering pKVM, DICE, GKI, RKP, Trusty, and more |
 | [`docs/DASHBOARD.md`](docs/DASHBOARD.md) | Web dashboard & REST API (`barzakh-server`) reference |
 | [`docs/AGENT.md`](docs/AGENT.md) | Continuous monitoring agent (`barzakh-agent`) configuration |
 | [`docs/INTEL.md`](docs/INTEL.md) | Threat intelligence: IOC feeds, YARA rules, MISP export |
 | [`docs/ML.md`](docs/ML.md) | Machine-learning anomaly detection & classification |
 | [`docs/SCENARIOS.md`](docs/SCENARIOS.md) | Multi-stage attack scenario chains |
+| [`docs/RANGE.md`](docs/RANGE.md) | Cyber range — QEMU/OVMF/swtpm attack → detect → assert loop |
 | [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) | Firmware knowledge base CLI reference |
 | [`docs/FUZZING.md`](docs/FUZZING.md) | Protocol-aware fuzzing harness |
 | [`docs/SETUP.md`](docs/SETUP.md) | Complete environment setup (EDK II, QEMU, swtpm, Rust) |

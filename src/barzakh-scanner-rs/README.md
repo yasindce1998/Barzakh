@@ -2,7 +2,7 @@
 
 **An advanced firmware security research platform — built to hunt what antivirus can't see.**
 
-Barzakh is a high-performance detection and red-team engine written in Rust that operates where traditional security tooling goes blind: below the OS, inside the silicon. It ships **132 detectors** and **127 adversarial payloads** spanning Ring 0 to Ring -4 — from UEFI DXE drivers through Intel ME, AMD PSP, ARM TrustZone, Apple Secure Enclave, and Android Verified Boot — plus platform services for threat intelligence (IOC feeds, YARA-subset rules, MISP export), machine-learning analysis, SQLite history and knowledge base, a REST API with web dashboard, and a continuous monitoring agent with SIEM forwarding. An automated fuzzing harness continuously discovers detector blind spots.
+Barzakh is a high-performance detection and red-team engine written in Rust that operates where traditional security tooling goes blind: below the OS, inside the silicon. It ships **138 detectors** and **134 adversarial payloads** spanning Ring 0 to Ring -4 — from UEFI DXE drivers through Intel ME, AMD PSP, ARM TrustZone, Apple Secure Enclave, and Android Verified Boot — plus platform services for threat intelligence (IOC feeds, YARA-subset rules, MISP export), machine-learning analysis, SQLite history and knowledge base, a REST API with web dashboard, and a continuous monitoring agent with SIEM forwarding. An automated fuzzing harness continuously discovers detector blind spots.
 
 > **One scanner. Every boot chain. Every architecture.**
 > x86_64 · AArch64 · RISC-V · Android · iOS/Apple Silicon · POWER · NVIDIA Tegra · Automotive · IoT

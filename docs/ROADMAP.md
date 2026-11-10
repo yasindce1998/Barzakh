@@ -1,12 +1,12 @@
 # Barzakh: Flagship Platform Roadmap
 
-> **Last Updated:** 2026-10-14 | **Status:** Planning — post-v0.5 platform expansion
+> **Last Updated:** 2026-11-10 | **Status:** Phase 2 shipped; Phases 3–4 descoped (see below)
 
 ---
 
 ## 🧭 Vision
 
-Barzakh today is a **point-in-time scanner plus adversary workbench**: 132 detectors, 127 payloads, threat intel, ML, REST dashboard, and a monitoring agent — all validated against a synthetic corpus inside CI. The goal of this roadmap is to evolve it into a **continuous, memory-safe, hardware-verified firmware security platform** that:
+Barzakh today is a **point-in-time scanner plus adversary workbench**: 138 detectors, 134 payloads, threat intel, ML, REST dashboard, and a monitoring agent — all validated against a synthetic corpus inside CI. The goal of this roadmap is to evolve it into a **continuous, memory-safe, hardware-verified firmware security platform** that:
 
 1. Runs **continuously** (kernel telemetry, not periodic scripts)
 2. Targets the **2025–2026 threat frontier** (early-boot DMA, NVRAM state tampering)
@@ -27,8 +27,8 @@ Everything below **exists and is green in CI** — this plan builds on it, it do
 | Layer | Assets |
 |-------|--------|
 | Offense (C) | 27 EDK II BootkitPkg modules (simulation-only, kill-switched), LegacyBootkit 16-bit |
-| Offense (Rust) | 127 payload generators, scenario chains, robustness benchmark, fuzzing harness |
-| Defense | 132 detectors, risk scoring, SARIF/CSV/ECS/CEF/LEEF reporting, baselines |
+| Offense (Rust) | 134 payload generators, scenario chains, robustness benchmark, fuzzing harness |
+| Defense | 138 detectors, risk scoring, SARIF/CSV/ECS/CEF/LEEF reporting, baselines |
 | Intel | IOC feeds (47 bundled), YARA-subset engine, MISP export, ATT&CK mapping |
 | ML | Isolation forest + logistic classifier (AUC 0.99), `nlp_strings` |
 | Services | barzakh-server (REST + dashboard, :8420), barzakh-agent (SIEM forwarding), SQLite history + KB |
@@ -106,6 +106,20 @@ Extends existing assets: `iommu_dmar` detector, `dmar_neuter` / `asus_nvram_redi
 
 > Anyone must be able to reproduce the full attack-and-detect loop without touching physical hardware.
 
+> **Status: ✅ SHIPPED (v0.5.0).** The range lives in
+> `barzakh-adversary::range` behind `barzakh-scanner range up|list`,
+> driven by declarative TOML suites in `range/`. It boots a real
+> QEMU q35 VM (`smm=on`, swtpm TPM 2.0, OVMF), deploys payloads at the
+> removable USB boot path (`\EFI\BOOT\BOOTX64.EFI` — the LoJax/BlackLotus
+> vector) as valid PE droppers the firmware actually `LoadImage()`s and
+> `StartImage()`s, captures guest RAM via the QEMU monitor, scans every
+> artifact, and asserts detections. Suites: `ring-2` (armed implants,
+> incl. the CVE-2026-97631 PXE ICMP overflow, plus a clean golden-boot
+> control) and `intentional-miss` (kill-switched variants that must NOT
+> be detected — the falsifiable negative). A dedicated
+> `range-test` GitHub Actions job runs the live range on pushes to main
+> and nightly (dry-run validation on PRs). See `docs/RANGE.md`.
+
 | Component | Role | Implementation notes |
 |-----------|------|---------------------|
 | **QEMU (`q35`, `smm=on`)** | Full x86_64 emulation: TSEG SMRAM locking, ICH9 SPI controller, PCIe topology | Already proven by `capture-baseline.sh` — promote to a first-class crate |
@@ -121,6 +135,17 @@ Extends existing assets: `iommu_dmar` detector, `dmar_neuter` / `asus_nvram_redi
 ---
 
 ## Phase 3 — Pillar 1: Continuous Ring 0 → Ring -2 Telemetry (Rust + eBPF)
+
+> **Status: ⛔ DESCOPED.** Continuous eBPF-based runtime telemetry is now
+> owned by [Warmor](https://github.com/yasindce1998/warmor) — a dedicated
+> cross-platform runtime security enforcer (eBPF/LSM-BPF sensors with a
+> WASM policy engine on Linux, Windows and macOS). Barzakh stays focused
+> on firmware/boot-chain detection; runtime enforcement belongs to Warmor,
+> which covers this phase's goals (kernel-visible SMI/syscall telemetry,
+> always-on sensors, no BYOVD raw-memory drivers) with far more depth.
+> The acceptance criterion that remains Barzakh's to keep — *no kernel
+> modules, no `/dev/mem`, no writable physical-memory IOCTLs anywhere in
+> the tree (CI-checked)* — stays enforced.
 
 > Replace point-in-time register polling with an always-on kernel sensor — **without** shipping a BYOVD-class raw-memory driver.
 
@@ -144,6 +169,14 @@ Extends existing assets: `iommu_dmar` detector, `dmar_neuter` / `asus_nvram_redi
 ---
 
 ## Phase 4 — Pillar 4: Wasm Policy & Forensics Engine
+
+> **Status: ⛔ DESCOPED.** Wasm-based policy engines are now owned by
+> [Warmor](https://github.com/yasindce1998/warmor) — YAML/Rust → WASM
+> compiled policies, ed25519-signed and hot-reloaded, evaluated on every
+> platform. Duplicating a policy engine inside Barzakh would split the
+> ecosystem; Barzakh's extensibility ladder remains TOML rules → IOC
+> feeds → YARA → ML, and its verdict policy remains the built-in
+> `crit ≥ 1 || high ≥ 2` rule plus the ML anomaly gate.
 
 > Firmware forensics policies today are brittle root-running Python scripts. Barzakh's extensibility ladder is TOML rules → IOC feeds → YARA → ML; Wasm is the top rung: **hot-reloadable, memory-sandboxed, fleet-distributable** detection logic.
 
