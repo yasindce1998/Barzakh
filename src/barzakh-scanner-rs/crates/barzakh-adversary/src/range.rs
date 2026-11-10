@@ -38,16 +38,23 @@
 //! evidence and only positively asserted, via `expect_in_memory`,
 //! for detectors unambiguously attributable to the implant.
 
+#[cfg(unix)]
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+#[cfg(unix)]
+use std::time::Duration;
+use std::time::Instant;
+
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
+#[cfg(unix)]
 use barzakh_core::BarzakhScanner;
 
 use crate::deploy::efi_app;
@@ -219,6 +226,7 @@ impl RangeTools {
     }
 
     /// Environment (LD_LIBRARY_PATH included) for spawned processes.
+    #[cfg(unix)]
     fn child_env(&self) -> Vec<(String, String)> {
         let mut env = Vec::new();
         if !self.ld_library_paths.is_empty() {
@@ -287,8 +295,10 @@ fn suite_config_ovmf_candidates_vars(prefix: &Path) -> Vec<PathBuf> {
 // ─── Process guards ──────────────────────────────────────────────────
 
 /// Kills the child when dropped, unless it already exited.
+#[cfg(unix)]
 struct ChildGuard(Child);
 
+#[cfg(unix)]
 impl Drop for ChildGuard {
     fn drop(&mut self) {
         let _ = self.0.kill();
@@ -299,12 +309,16 @@ impl Drop for ChildGuard {
 // ─── HMP monitor client ──────────────────────────────────────────────
 
 /// Minimal QEMU human-monitor (HMP) client over a unix socket: enough
-/// for `pmemsave` and `quit`.
+/// for `pmemsave` and `quit`. Unix-only: the live range drives QEMU's
+/// unix-socket monitor, so non-Unix hosts get a clear error at the
+/// capture step (and keep full `--dry-run` support).
+#[cfg(unix)]
 struct HmpClient {
     stream: UnixStream,
     buf: Vec<u8>,
 }
 
+#[cfg(unix)]
 impl HmpClient {
     fn connect(path: &Path) -> Result<Self> {
         let stream = UnixStream::connect(path)
@@ -350,8 +364,10 @@ impl HmpClient {
     }
 }
 
+#[cfg(unix)]
 const PROMPT: &[u8] = b"(qemu)";
 
+#[cfg(unix)]
 fn find_prompt(buf: &[u8]) -> Result<usize> {
     buf.windows(PROMPT.len())
         .position(|w| w == PROMPT)
@@ -624,6 +640,63 @@ fn run_case_inner(
         bail!("firmware {} not found", firmware_code.display());
     }
 
+    // The live range drives QEMU's unix-socket HMP monitor for the
+    // guest-RAM capture; non-Unix hosts keep the (fully functional)
+    // dry-run path above and get a clear error here instead.
+    #[cfg(unix)]
+    return run_live_case(
+        case,
+        config,
+        tools,
+        workdir,
+        opts,
+        report,
+        firmware_code,
+        firmware_vars,
+        payload_path,
+        dropper_path,
+        esp_path,
+    );
+
+    #[cfg(not(unix))]
+    {
+        let _ = (
+            case,
+            config,
+            workdir,
+            opts,
+            report,
+            firmware_code,
+            firmware_vars,
+            payload_path,
+            dropper_path,
+            esp_path,
+        );
+        bail!(
+            "the live cyber range requires a Unix-like host (QEMU HMP unix-socket monitor); \
+             use `range up --dry-run` on this platform"
+        );
+    }
+}
+
+/// The live (booting) portion of a range case: QEMU/swtpm boot, memory
+/// capture over the HMP unix socket, artifact + memory scan, assertions.
+/// Unix-only — the HMP monitor transport is a unix socket.
+#[cfg(unix)]
+#[allow(clippy::too_many_arguments)]
+fn run_live_case(
+    case: &RangeCase,
+    config: &RangeConfig,
+    tools: &RangeTools,
+    workdir: &Path,
+    opts: &RangeOptions,
+    report: &mut CaseReport,
+    firmware_code: PathBuf,
+    firmware_vars: PathBuf,
+    payload_path: PathBuf,
+    dropper_path: PathBuf,
+    esp_path: PathBuf,
+) -> Result<()> {
     // ── 2. Boot the range: swtpm + QEMU q35. ──
     let mut swtpm_guard = None;
     if config.tpm {
@@ -723,13 +796,29 @@ fn run_case_inner(
 
     // ── 4. Capture: guest memory via the monitor, then power off. ──
     let mem_dump = workdir.join("mem.bin");
+    #[cfg(unix)]
     let mut hmp = HmpClient::connect(&monitor_sock)?;
+    #[cfg(unix)]
     let mem_bytes = config.memory_mb as u64 * 1024 * 1024;
+    #[cfg(unix)]
     hmp.command(&format!(
         "pmemsave 0 0x{mem_bytes:x} {}",
         mem_dump.display()
     ))?;
+    #[cfg(unix)]
     let _ = hmp.command("quit");
+    #[cfg(not(unix))]
+    {
+        // The live range drives QEMU's unix-socket HMP monitor; make the
+        // platform limitation explicit instead of a compile error (the
+        // dry-run path works everywhere).
+        let _ = &monitor_sock;
+        let _ = &config.memory_mb;
+        bail!(
+            "the live cyber range requires a Unix-like host (QEMU HMP \
+             unix-socket monitor); use `range up --dry-run` on this platform"
+        );
+    }
     let _ = qemu_guard.0.wait();
     drop(qemu_guard);
     drop(swtpm_guard);
@@ -903,6 +992,7 @@ fn planned_qemu_command(config: &RangeConfig, tools: &RangeTools, workdir: &Path
     )
 }
 
+#[cfg(unix)]
 fn wait_for_file(path: &Path, timeout: Duration) -> Result<()> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
