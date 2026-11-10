@@ -51,7 +51,7 @@ curl -s http://localhost:8420/api/health
 ```
 
 ```json
-{"status": "ok", "version": "0.5.0", "scans": 42}
+{"status": "ok", "version": "0.7.0", "scans": 42}
 ```
 
 ### List detectors

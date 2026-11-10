@@ -4,7 +4,7 @@ All notable changes to the Barzakh firmware security platform.
 Format based on [Keep a Changelog](https://keepachangelog.com/); the
 project follows semantic versioning. Dates are ISO-8601.
 
-## [Unreleased]
+## [0.7.0] — 2026-11-10
 
 ### Phase 0 — Foundation & credibility hardening
 

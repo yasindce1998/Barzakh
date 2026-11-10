@@ -92,13 +92,13 @@ barzakh-agent --config agent.toml once
 ### ArcSight CEF (single lines)
 
 ```text
-CEF:0|Barzakh|barzakh-agent|0.5.0|blacklotus|BlackLotus-style secure boot bypass artifact|10|cs1=/boot/efi/firmware.bin cs1Label=targetFile filePath=/boot/efi/firmware.bin fileHash=9f2c... rt=1760349302000
+CEF:0|Barzakh|barzakh-agent|0.7.0|blacklotus|BlackLotus-style secure boot bypass artifact|10|cs1=/boot/efi/firmware.bin cs1Label=targetFile filePath=/boot/efi/firmware.bin fileHash=9f2c... rt=1760349302000
 ```
 
 ### QRadar LEEF (single lines)
 
 ```text
-LEEF:2.0|Barzakh|barzakh-agent|0.5.0|blacklotus|sev=Critical|filePath=/boot/efi/firmware.bin|fileHash=9f2c...|usrName=barzakh-agent
+LEEF:2.0|Barzakh|barzakh-agent|0.7.0|blacklotus|sev=Critical|filePath=/boot/efi/firmware.bin|fileHash=9f2c...|usrName=barzakh-agent
 ```
 
 All events are also appended to the history DB, so no alert is lost if the SIEM transport fails.
