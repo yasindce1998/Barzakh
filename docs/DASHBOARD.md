@@ -6,13 +6,16 @@
 
 ## 🖥️ Overview
 
-`barzakh-server` embeds a web dashboard and a JSON REST API for submitting scans, browsing findings, tracking risk-score trends, and managing the firmware knowledge base. State (scans, findings, KB profiles, schedules) persists in a SQLite database.
+`barzakh-server` embeds a dashboard and JSON API. Scans, findings, and KB profiles
+persist in SQLite; schedules are currently in-memory. See [HARDENING.md](HARDENING.md)
+for authentication, approved input roots, resource limits, and outcome semantics.
 
 ```bash
 # Build & run
 cd src/barzakh-scanner-rs
 cargo build --release
-./target/release/barzakh-server --port 8420 --db barzakh.db
+export BARZAKH_API_KEY="$(openssl rand -hex 32)"
+./target/release/barzakh-server --port 8420 --db barzakh.db --scan-root /srv/firmware
 
 # Or via Docker (see docker-compose.yml / Dockerfile.runtime)
 docker compose up -d
@@ -44,6 +47,9 @@ Back to [README](../README.md) · See also [AGENT.md](AGENT.md) (real-time monit
 
 All endpoints return JSON unless a `format` query parameter selects another rendering. Errors use `{"error": "..."}` with an appropriate HTTP status.
 
+Except for `/api/health`, add `-H "X-API-Key: $BARZAKH_API_KEY"` to the curl
+examples below. Scan/KB/schedule targets must exist beneath an approved root.
+
 ### Health
 
 ```bash
@@ -61,7 +67,7 @@ curl -s http://localhost:8420/api/detectors
 ```
 
 ```json
-{"count": 132, "detectors": [{"name": "blacklotus", "category": "secureboot", "severity": "critical"}, ...]}
+{"count": 138, "detectors": ["acpi_integrity", "amd_psp", "..."]}
 ```
 
 ### Submit a scan
@@ -79,8 +85,8 @@ curl -s -X POST http://localhost:8420/api/scans \
 Scans run **asynchronously** (HTTP `202 Accepted`): the endpoint records a
 `running` row and executes the scan on a background worker, so even
 multi-megabyte firmware images never block the server's event loop. Poll
-`GET /api/scans/{id}` until `status` becomes `complete` (or `failed`,
-which carries an `error` message):
+`GET /api/scans/{id}` until `status` becomes `complete`, `partial`, or `failed`,
+with incomplete outcomes carrying error details:
 
 ```bash
 curl -s http://localhost:8420/api/scans/7

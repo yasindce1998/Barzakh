@@ -128,3 +128,34 @@ pub(crate) fn parse_entries(data: &[u8]) -> Vec<VarEntry<'_>> {
 
     entries
 }
+
+/// Stronger evidence boundary for measured-boot correlation: entries must be
+/// inside a healthy authenticated store's declared range, not merely coexist
+/// with a referenced GUID elsewhere in a PE binary. Legacy stores have a
+/// different header layout and are intentionally not interpreted here.
+pub(crate) fn parse_bounded_authenticated_entries(data: &[u8]) -> Vec<VarEntry<'_>> {
+    let mut entries = Vec::new();
+    for (start, signature) in data.windows(16).enumerate() {
+        if signature != AUTH_VARSTORE_GUID || start + 28 > data.len() {
+            continue;
+        }
+        let size = u32::from_le_bytes(data[start + 16..start + 20].try_into().unwrap()) as usize;
+        let Some(end) = start.checked_add(size).filter(|&end| end <= data.len()) else {
+            continue;
+        };
+        if size < 28 || data[start + 20] != 0x5A || data[start + 21] != 0xFE {
+            continue;
+        }
+        // Reuse the field decoder, but confine it to this validated store.
+        for mut entry in parse_entries(&data[start..end]) {
+            if entry.offset < 28 {
+                continue;
+            }
+            entry.offset += start;
+            entries.push(entry);
+        }
+    }
+    entries.sort_by_key(|entry| entry.offset);
+    entries.dedup_by_key(|entry| entry.offset);
+    entries
+}

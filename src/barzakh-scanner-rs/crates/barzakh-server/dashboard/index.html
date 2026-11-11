@@ -40,6 +40,13 @@
 </header>
 <main>
   <section>
+    <h2>API authentication</h2>
+    <div class="row">
+      <input id="api-key" type="password" autocomplete="off" placeholder="API key (kept only in this page)" />
+      <button onclick="loadScans()">Connect</button>
+    </div>
+  </section>
+  <section>
     <h2>New scan</h2>
     <div class="row">
       <input id="target" placeholder="/path/to/firmware.bin" />
@@ -79,6 +86,9 @@ const out = (text) => { $("output").textContent = typeof text === "string" ? tex
 const msg = (text, ok) => { $("msg").textContent = text; $("msg").style.color = ok ? "#7bffb0" : "#ff7b8f"; };
 
 async function api(path, options) {
+  options = { ...options, headers: { ...options?.headers } };
+  const key = $("api-key").value;
+  if (key) options.headers["X-API-Key"] = key;
   const res = await fetch(path, options);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || res.statusText);
@@ -87,7 +97,11 @@ async function api(path, options) {
 
 function badge(level) {
   const cls = ["critical","high"].includes(level) ? level : ["medium","low","clean"].includes(level) ? level : "low";
-  return `<span class="badge ${cls}">${level}</span>`;
+  return `<span class="badge ${cls}">${escapeHtml(level)}</span>`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
 async function submitScan() {
@@ -114,7 +128,7 @@ async function pollScan(id) {
   for (;;) {
     const detail = await api(`/api/scans/${id}`);
     if (detail.status === "complete") return detail;
-    if (detail.status === "failed") throw new Error(detail.error || `scan #${id} failed`);
+    if (["failed", "partial"].includes(detail.status)) throw new Error(detail.error || `scan #${id} ${detail.status}`);
     if (Date.now() > deadline) throw new Error(`scan #${id} timed out`);
     msg(`scan #${id} running…`, true);
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -128,14 +142,14 @@ async function loadScans() {
     const statusBadge = (s) => s === "complete" ? badge("clean") + " complete"
       : s === "running" ? badge("medium") + " running"
       : s === "failed" ? badge("critical") + " failed"
-      : badge("low") + " " + s;
+       : badge("medium") + " " + escapeHtml(s);
     tbody.innerHTML = (scans || []).map(s => `<tr>
       <td>${s.scan_id}</td>
       <td>${s.timestamp.replace("T", " ").slice(0, 19)}</td>
-      <td>${s.target}</td>
+      <td>${escapeHtml(s.target)}</td>
       <td>${statusBadge(s.status)}</td>
       <td>${badge(s.risk_level)} ${s.risk_score}/100</td>
-      <td>${s.bootkit_detected ? badge("critical") + " bootkit" : badge("clean") + " clean"}</td>
+      <td>${s.bootkit_detected ? badge("critical") + " bootkit" : s.status === "complete" ? badge("low") + " no detection" : badge("medium") + " inconclusive"}</td>
       <td>${s.critical}/${s.high}/${s.medium}/${s.low}</td>
     </tr>`).join("") || `<tr><td colspan="7" class="muted">no scans yet</td></tr>`;
   } catch (e) { msg(e.message, false); }

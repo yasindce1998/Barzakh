@@ -48,6 +48,39 @@ fn real_corpus_validation() {
     let root = repo_root();
     let clean = list_samples(&root.join("test-data").join("real").join("clean"));
     let malicious = list_samples(&root.join("test-data").join("real").join("malicious"));
+    let strict = std::env::var("BARZAKH_REQUIRE_REAL_CORPUS").as_deref() == Ok("1");
+    if strict {
+        assert!(
+            !clean.is_empty() && !malicious.is_empty(),
+            "strict real-corpus validation requires both clean and malicious samples"
+        );
+    }
+    let manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join("test-data/real/manifest.toml")).unwrap())
+            .unwrap();
+    for (kind, samples) in [("clean", &clean), ("malicious", &malicious)] {
+        let declared = manifest[kind].as_array().unwrap();
+        if strict {
+            assert_eq!(
+                samples.len(),
+                declared.len(),
+                "missing or undeclared {kind} samples"
+            );
+        }
+        for sample in samples {
+            let name = sample.file_name().unwrap().to_str().unwrap();
+            let entry = declared
+                .iter()
+                .find(|e| e["name"].as_str() == Some(name))
+                .expect("sample must be declared");
+            let expected = entry
+                .get("sha256")
+                .and_then(|s| s.as_str())
+                .expect("present samples require a reviewed SHA-256 in the manifest");
+            let context = barzakh_core::ScanContext::load(sample).unwrap();
+            assert_eq!(context.sha256(), expected, "hash mismatch for {name}");
+        }
+    }
 
     if clean.is_empty() && malicious.is_empty() {
         eprintln!(
@@ -63,6 +96,12 @@ fn real_corpus_validation() {
         let mut flagged = Vec::new();
         for path in &clean {
             let result = scanner.scan(path, None);
+            assert_eq!(
+                result.status,
+                barzakh_core::ScanStatus::Complete,
+                "incomplete real-corpus scan: {}",
+                path.display()
+            );
             if result.summary.bootkit_detected {
                 flagged.push(path.display().to_string());
             }
@@ -87,6 +126,12 @@ fn real_corpus_validation() {
         let mut detected = 0usize;
         for path in &malicious {
             let result = scanner.scan(path, None);
+            assert_eq!(
+                result.status,
+                barzakh_core::ScanStatus::Complete,
+                "incomplete real-corpus scan: {}",
+                path.display()
+            );
             if result.summary.bootkit_detected {
                 detected += 1;
             } else {

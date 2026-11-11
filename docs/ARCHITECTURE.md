@@ -1,6 +1,9 @@
 # Barzakh: Technical Architecture & Implementation Details
 
-This document outlines the in-depth technical specifications, system architecture, and low-level methodologies for Project Barzakh. 
+This document describes the architecture and research design. See
+[HARDENING.md](HARDENING.md) for current scan outcomes, snapshot execution,
+deployment controls, and limitations; intended signing/storage guarantees below
+are not proof of deployment enforcement.
 
 ## 1. System Architecture
 
@@ -148,7 +151,7 @@ A fail-safe to prevent test hardware bricking:
 
 ### 5.3 Build Chain Integrity & Reproducibility
 To prevent supply-chain tampering and ensure academic reproducibility:
-* **OVMF Version Pinning:** All builds must use a specific, pinned OVMF commit hash (e.g., `edk2-stable202405`, commit `a]b1c2d3e4f5`). The exact commit is recorded in `scripts/build.sh` and must match the value documented in the test environment setup.
+* **OVMF Version Pinning (goal):** builds should use a reviewed EDK II commit and record it with artifacts. Existing tag/package pins are not equivalent to universal commit-level pinning.
 * **Reproducible Builds:** `build.sh` uses deterministic compiler flags (`-frandom-seed`, fixed `SOURCE_DATE_EPOCH`) to ensure byte-identical outputs across machines.
 * **Artifact Signing:** All compiled `.efi` binaries are signed with a project-specific Ed25519 key (stored in an HSM or hardware token, never committed to the repository). Signatures are verified before any QEMU test execution.
 * **SBOM Generation:** Each build produces a Software Bill of Materials (SPDX format) cataloging all EDK II dependencies, compiler versions, and OVMF source hashes.

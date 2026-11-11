@@ -296,7 +296,10 @@ impl Detector for ThermalCovertDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&crate::ScanContext::load(target_path)?)
+    }
+    fn detect_context(&self, context: &crate::ScanContext) -> Result<Vec<Finding>, DetectorError> {
+        let data = context.shared_bytes();
         let mut findings = Vec::new();
 
         findings.extend(self.check_rapl_msr_manipulation(&data));

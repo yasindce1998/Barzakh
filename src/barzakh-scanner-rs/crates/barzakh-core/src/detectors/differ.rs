@@ -288,29 +288,42 @@ impl Detector for FirmwareDifferDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let target_data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&crate::ScanContext::load(target_path)?)
+    }
+
+    fn detect_context(&self, context: &crate::ScanContext) -> Result<Vec<Finding>, DetectorError> {
+        let target_data = context.shared_bytes();
         let mut findings = Vec::new();
 
         let baseline = match &self.baseline {
             Some(b) => b,
-            None => return Ok(findings),
+            None => {
+                return Err(DetectorError::NotApplicable(
+                    "no baseline configured".into(),
+                ))
+            }
         };
 
         // Get baseline firmware path from baseline data
         let baseline_path = match &baseline.boot_services_table {
             Some(bst) => match bst.get("baseline_firmware_path").and_then(|v| v.as_str()) {
                 Some(p) => p.to_string(),
-                None => return Ok(findings),
+                None => {
+                    return Err(DetectorError::NotApplicable(
+                        "baseline has no firmware path".into(),
+                    ))
+                }
             },
-            None => return Ok(findings),
+            None => {
+                return Err(DetectorError::NotApplicable(
+                    "baseline has no firmware path".into(),
+                ))
+            }
         };
 
-        let baseline_data = match std::fs::read(&baseline_path) {
-            Ok(d) => d,
-            Err(_) => return Ok(findings),
-        };
+        let baseline_data = crate::ScanContext::load(Path::new(&baseline_path))?;
 
-        let baseline_vols = Self::parse_firmware_volumes(&baseline_data);
+        let baseline_vols = Self::parse_firmware_volumes(baseline_data.data());
         let target_vols = Self::parse_firmware_volumes(&target_data);
 
         let diffs = Self::diff_volumes(&baseline_vols, &target_vols);

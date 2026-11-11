@@ -2051,7 +2051,14 @@ impl Detector for YaraRuleDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&barzakh_core::ScanContext::load(target_path)?)
+    }
+    fn detect_context(
+        &self,
+        context: &barzakh_core::ScanContext,
+    ) -> Result<Vec<Finding>, DetectorError> {
+        let data = context.shared_bytes();
+        let target_path = context.path();
 
         // The scanned file's name is available as the `filename` external
         // (overridable by the caller), mirroring the yara CLI.

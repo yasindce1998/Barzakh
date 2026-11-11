@@ -14,7 +14,7 @@ use barzakh_core::{BarzakhScanner, Baseline, ReportFormat, Severity};
 #[command(
     name = "barzakh",
     about = "Barzakh — UEFI Firmware Security Analysis Platform",
-    long_about = "A comprehensive UEFI bootkit detection engine with 30 security detectors\n\
+    long_about = "A modular UEFI bootkit detection engine with extensible security detectors\n\
                   for firmware integrity verification and threat analysis.",
     version,
     propagate_version = true
@@ -147,6 +147,12 @@ struct ScanArgs {
     /// Enable the ML anomaly detector (isolation forest)
     #[arg(long)]
     ml: bool,
+    /// Maximum input size in bytes (increase explicitly for large memory dumps)
+    #[arg(long, default_value_t = barzakh_core::context::DEFAULT_MAX_IMAGE_BYTES)]
+    max_image_bytes: u64,
+    /// Separately captured TCG binary event log from the same boot (not quote-verified)
+    #[arg(long)]
+    event_log: Option<PathBuf>,
 }
 
 // ─── Baseline ────────────────────────────────────────────────────────────────
@@ -225,6 +231,15 @@ struct ValidateArgs {
     /// Output as JSON
     #[arg(long)]
     json: bool,
+    /// Explicit labeled corpus TOML (paths relative to manifest)
+    #[arg(long)]
+    manifest: Option<PathBuf>,
+    /// Require every declared sample and both positive/negative classes
+    #[arg(long, requires = "manifest")]
+    strict: bool,
+    /// Evaluate one held-out split: train, validation, or test
+    #[arg(long, requires = "manifest", value_parser = ["train", "validation", "test"])]
+    split: Option<String>,
 }
 
 // ─── Fuzz ───────────────────────────────────────────────────────────────────
@@ -468,6 +483,21 @@ enum MlCommands {
 
 #[derive(Parser)]
 struct ServeArgs {
+    /// Listen address; public exposure always requires authentication
+    #[arg(long, default_value = "127.0.0.1")]
+    bind: std::net::IpAddr,
+    /// Explicitly allow unauthenticated development on loopback only
+    #[arg(long)]
+    insecure_dev: bool,
+    /// Approved input directories (repeatable; default payloads)
+    #[arg(long = "scan-root")]
+    scan_roots: Vec<PathBuf>,
+    #[arg(long, default_value_t = barzakh_core::context::DEFAULT_MAX_IMAGE_BYTES)]
+    max_image_bytes: u64,
+    #[arg(long, default_value_t = 2)]
+    max_concurrent_scans: usize,
+    #[arg(long, default_value_t = 8)]
+    max_queued_scans: usize,
     /// TCP port to listen on
     #[arg(short, long, default_value = "8420")]
     port: u16,
@@ -610,11 +640,15 @@ fn main() {
     } else {
         EnvFilter::new("warn")
     };
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Keep stdout machine-readable for --json even with verbose tracing.
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(filter)
+        .init();
 
     if let Err(e) = run(cli) {
         eprintln!("{} {}", "error:".red().bold(), e);
-        process::exit(1);
+        process::exit(2);
     }
 }
 
@@ -651,6 +685,7 @@ fn cmd_scan(args: ScanArgs) -> Result<()> {
     };
 
     let mut scanner = BarzakhScanner::new(baseline);
+    scanner.max_image_bytes = args.max_image_bytes;
 
     // Register optional external detectors (declarative rules, intel
     // feeds, YARA rules, ML anomaly model).
@@ -730,25 +765,25 @@ fn cmd_scan(args: ScanArgs) -> Result<()> {
         .as_ref()
         .map(|v| v.iter().map(|s| s.as_str()).collect());
 
-    let result = scanner.scan(&args.target, scan_types_refs.as_deref());
+    let result = if let Some(log) = args.event_log {
+        let log = barzakh_core::ScanContext::load(&log)?;
+        let context =
+            barzakh_core::ScanContext::load_with_limit(&args.target, args.max_image_bytes)?
+                .with_event_log(log.data())?;
+        scanner.scan_context(&context, scan_types_refs.as_deref())
+    } else {
+        scanner.scan(&args.target, scan_types_refs.as_deref())
+    };
 
     if let Some(pb) = pb {
         pb.finish_and_clear();
-    }
-
-    if args.json {
-        println!("{}", serde_json::to_string_pretty(&result.findings)?);
-        if result.summary.bootkit_detected {
-            process::exit(1);
-        }
-        return Ok(());
     }
 
     // Record into the history database (before exiting on detection).
     if let Some(history_db) = &args.history {
         let mut store = barzakh_store::history::ScanStore::open(history_db)?;
         let id = store.record(&result)?;
-        if !args.quiet {
+        if !args.quiet && !args.json {
             println!(
                 "  {} Scan #{} recorded in {}",
                 "✓".green().bold(),
@@ -758,16 +793,22 @@ fn cmd_scan(args: ScanArgs) -> Result<()> {
         }
     }
 
-    if !args.quiet {
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    }
+    if !args.quiet && !args.json {
         println!();
         println!(
-            "{} Scan complete in {:.3}s",
-            "✓".green().bold(),
+            "{} Scan {} in {:.3}s",
+            "▶".cyan().bold(),
+            result.status.as_str(),
             result.scan_info.duration_seconds
         );
         println!();
 
-        if result.findings.is_empty() {
+        if result.status != barzakh_core::ScanStatus::Complete {
+            eprintln!("Scan incomplete: verdict is not a clean bill of health. Errors: {:?}; see --json for detector outcomes.", result.errors);
+        } else if result.findings.is_empty() {
             println!("  {} No threats detected", "●".green());
         } else {
             let rows: Vec<FindingRow> = result
@@ -806,13 +847,13 @@ fn cmd_scan(args: ScanArgs) -> Result<()> {
         let format = ReportFormat::from_str(&args.format)
             .ok_or_else(|| anyhow::anyhow!("Unknown format: {}", args.format))?;
         scanner.generate_report(&report_path, format)?;
-        if !args.quiet {
+        if !args.quiet && !args.json {
             println!("  Report written to: {}", report_path.display());
         }
     }
 
-    if result.summary.bootkit_detected {
-        process::exit(1);
+    if result.exit_code() != 0 {
+        process::exit(result.exit_code());
     }
 
     Ok(())
@@ -905,7 +946,19 @@ fn cmd_validate(args: ValidateArgs) -> Result<()> {
         None => None,
     };
 
-    let scanner = BarzakhScanner::new(baseline);
+    let mut scanner = BarzakhScanner::new(baseline);
+
+    if let Some(manifest) = &args.manifest {
+        let report = barzakh_core::validation::validate_manifest(
+            &mut scanner,
+            manifest,
+            args.strict,
+            args.split.as_deref(),
+        )?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+    eprintln!("warning: filename-labeled validation is legacy synthetic regression only; use --manifest for explicit labels and hashes");
 
     if !args.json {
         println!(
@@ -916,6 +969,13 @@ fn cmd_validate(args: ValidateArgs) -> Result<()> {
     }
 
     let metrics = scanner.validate_against_corpus(&args.corpus)?;
+    if !metrics.incomplete_samples.is_empty() {
+        eprintln!(
+            "warning: {} incomplete samples excluded from accuracy denominators: {}",
+            metrics.incomplete_samples.len(),
+            metrics.incomplete_samples.join(", ")
+        );
+    }
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&metrics)?);
@@ -1042,19 +1102,28 @@ fn cmd_fuzz(args: FuzzArgs) -> Result<()> {
 
         let mut scanner = BarzakhScanner::new(None);
         let mut fuzzer = barzakh_core::fuzz::ProtocolFuzzer::new(protocol, 0xFEED_FACE);
+        let mut execution_errors = Vec::new();
         let stats = fuzzer.run(args.iterations as usize, |input| {
-            let dir = std::env::temp_dir().join(format!("barzakh-fuzz-{}", std::process::id()));
-            let _ = std::fs::create_dir_all(&dir);
-            let path = dir.join("input.bin");
-            let _ = std::fs::write(&path, input);
-            let result = scanner.scan(&path, None);
-            let _ = std::fs::remove_file(&path);
+            let context =
+                barzakh_core::ScanContext::from_bytes("fuzz-input.bin".into(), input.to_vec());
+            let result = scanner.scan_context(&context, None);
+            execution_errors.extend(
+                result
+                    .detector_runs
+                    .iter()
+                    .filter(|r| r.status == barzakh_core::DetectorStatus::Error)
+                    .map(|r| r.detector.clone()),
+            );
             result
                 .findings
                 .iter()
                 .map(|f| f.detector.clone())
                 .collect::<Vec<String>>()
         });
+        anyhow::ensure!(
+            execution_errors.is_empty(),
+            "detector execution failures during fuzzing: {execution_errors:?}"
+        );
 
         if args.json {
             println!("{}", serde_json::to_string_pretty(&stats)?);
@@ -1646,6 +1715,16 @@ fn cmd_serve(args: ServeArgs) -> Result<()> {
             .filter(|k| !k.is_empty())
     });
     let config = barzakh_server::ServerConfig {
+        bind: args.bind,
+        insecure_dev: args.insecure_dev,
+        scan_roots: if args.scan_roots.is_empty() {
+            vec![PathBuf::from("payloads")]
+        } else {
+            args.scan_roots
+        },
+        max_image_bytes: args.max_image_bytes,
+        max_concurrent_scans: args.max_concurrent_scans,
+        max_queued_scans: args.max_queued_scans,
         port: args.port,
         db_path: args.db,
         payloads_dir: args

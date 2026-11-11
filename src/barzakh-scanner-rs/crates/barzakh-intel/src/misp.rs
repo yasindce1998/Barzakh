@@ -88,6 +88,11 @@ mod tests {
             bootkit_detected: true,
         };
         ScanResult {
+            status: barzakh_core::ScanStatus::Complete,
+            detector_runs: Vec::new(),
+            errors: Vec::new(),
+            input_sha256: None,
+            event_log_sha256: None,
             summary,
             findings,
             scan_info: barzakh_core::scanner::ScanInfo {

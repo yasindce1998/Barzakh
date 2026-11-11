@@ -9,6 +9,7 @@ use crate::Payload;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
+    pub scan_status: barzakh_core::ScanStatus,
     pub payload_name: String,
     pub detected: bool,
     pub expected_findings: usize,
@@ -68,6 +69,15 @@ impl ValidationReport {
 pub fn validate_payload(payload: &dyn Payload, dump_path: &Path) -> Result<ValidationResult> {
     let mut scanner = BarzakhScanner::new(None);
     let scan_result = scanner.scan(dump_path, None);
+    anyhow::ensure!(
+        !scan_result
+            .detector_runs
+            .iter()
+            .any(|r| r.status == barzakh_core::DetectorStatus::Error)
+            && scan_result.status != barzakh_core::ScanStatus::Failed,
+        "scan execution failed for {}",
+        dump_path.display()
+    );
 
     let expected = payload.expected_detections();
     let mut matched = 0;
@@ -89,8 +99,9 @@ pub fn validate_payload(payload: &dyn Payload, dump_path: &Path) -> Result<Valid
         .count();
 
     Ok(ValidationResult {
+        scan_status: scan_result.status,
         payload_name: payload.name().to_string(),
-        detected: matched > 0,
+        detected: matched > 0 && scan_result.status == barzakh_core::ScanStatus::Complete,
         expected_findings: expected.len(),
         matched_findings: matched,
         extra_findings: extra,
@@ -127,6 +138,11 @@ pub fn validate_all(payloads: &[Box<dyn Payload>], dump_dir: &Path) -> Result<Va
 
             let mut scanner = BarzakhScanner::new(None);
             let scan_result = scanner.scan(&path, None);
+            anyhow::ensure!(
+                scan_result.status == barzakh_core::ScanStatus::Complete,
+                "incomplete scan cannot count as a clean negative: {}",
+                path.display()
+            );
             if scan_result.summary.bootkit_detected {
                 false_positives += 1;
             } else {

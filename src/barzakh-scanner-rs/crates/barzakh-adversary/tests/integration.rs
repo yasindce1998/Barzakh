@@ -106,12 +106,21 @@ fn test_dma_window_bypass_detected() {
 }
 
 #[test]
-fn test_nvram_silent_downgrade_detected() {
+fn test_nvram_without_log_is_inconclusive() {
     let payload = NvramSilentDowngradePayload;
     let config = PayloadConfig::default();
     let tmp = write_payload_to_temp(&payload, &config);
-    let result = validate_payload(&payload, tmp.path()).unwrap();
-    assert!(result.detected, "NVRAM silent downgrade should be detected");
+    let result =
+        barzakh_core::BarzakhScanner::new(None).scan(tmp.path(), Some(&["nvram_verifier"]));
+    assert_ne!(result.status, barzakh_core::ScanStatus::Complete);
+    assert!(
+        !result.summary.bootkit_detected,
+        "missing log alone is not proof of tampering"
+    );
+    assert_eq!(
+        result.detector_runs[0].status,
+        barzakh_core::DetectorStatus::InsufficientEvidence
+    );
 }
 
 #[test]
@@ -162,6 +171,15 @@ fn corpus_validation() {
 
     let scanner = barzakh_core::BarzakhScanner::new(None);
     let metrics = scanner.validate_against_corpus(dir.path()).unwrap();
+    // This historical fixture intentionally has no independent event log.
+    // Keep the gap visible instead of counting it as a detection or clean scan.
+    assert_eq!(
+        metrics.incomplete_samples,
+        [
+            "malicious_auth_var_rollback.bin",
+            "malicious_nvram_silent_downgrade.bin"
+        ]
+    );
 
     assert!(
         metrics.true_positive_rate >= 0.8,

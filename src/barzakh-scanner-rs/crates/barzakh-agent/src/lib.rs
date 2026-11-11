@@ -171,6 +171,12 @@ impl Agent {
         if let Ok(mut store) = ScanStore::open(&self.config.db) {
             let _ = store.record(&result);
         }
+        anyhow::ensure!(
+            result.status == barzakh_core::ScanStatus::Complete,
+            "scan of {} is {}; inspect scan history for errors",
+            change.target,
+            result.status.as_str()
+        );
 
         let alerting: Vec<&Finding> = result
             .findings
@@ -232,9 +238,14 @@ impl Agent {
             std::thread::sleep(Duration::from_secs(self.config.interval_secs.max(1)));
             for change in self.poll() {
                 tracing::info!("change detected: {} ({})", change.target, change.kind);
-                let alerts = self.scan_and_alert(&change)?;
-                if alerts > 0 {
-                    tracing::warn!("{} alerting findings on {}", alerts, change.target);
+                match self.scan_and_alert(&change) {
+                    Ok(alerts) if alerts > 0 => {
+                        tracing::warn!("{} alerting findings on {}", alerts, change.target)
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::error!("scan failed/incomplete on {}: {error}", change.target)
+                    }
                 }
             }
         }

@@ -6,12 +6,16 @@
 
 **The most comprehensive open-source UEFI firmware security research platform**
 
-*Offense emulation from Ring 0 to Ring -4 | 132 detection engines | Closed-loop adversary validation*
+*Firmware threat emulation | Modular detection engine | Closed-loop adversary validation*
+
+<!-- capabilities:start -->
+**138 registered built-in detectors** — [generated registry](docs/CAPABILITIES.md).
+<!-- capabilities:end -->
 
 [![CI](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml/badge.svg)](https://github.com/yasindce1998/Barzakh/actions/workflows/barzakh-ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange)](src/barzakh-scanner-rs/)
 [![EDK II](https://img.shields.io/badge/EDK%20II-2024.05-blue)](src/BootkitPkg/)
-[![License: Research](https://img.shields.io/badge/License-Academic%20Research-red)](#-license)
+[![License: BSD-2-Clause-Patent](https://img.shields.io/badge/License-BSD--2--Clause--Patent-blue)](LICENSE)
 
 </div>
 
@@ -19,11 +23,15 @@
 
 > **⚠️ ACADEMIC RESEARCH PROJECT — DEFENSIVE SECURITY ONLY**
 >
-> This platform exists to study firmware threats and build defenses against them. It contains live offense emulations with hardware-rooted kill-switches. By accessing this repository, you agree to use it solely for legitimate security research and educational purposes.
+> This platform exists to study firmware threats and build defenses against them. It contains offense emulations with lab safeguards. Use it only in authorized, isolated research environments. This safety guidance does not alter the BSD-2-Clause-Patent license.
 
 ---
 
 ## 📋 What Is Barzakh?
+
+> **Scan/deployment migration:** see [HARDENING.md](docs/HARDENING.md) for full
+> JSON scan outcomes, exit codes (0/1/2), mandatory API authentication, approved
+> input roots, validation provenance, and the limits of heuristic findings.
 
 Barzakh is a full-stack firmware security research platform that models real-world bootkit TTPs across every privilege ring — from UEFI DXE drivers (Ring 0) down through SMM, Intel ME, AMD PSP, platform DMA controllers (Ring -3), and CPU microarchitectural threats (Ring -4). It pairs each offense technique with a corresponding detection engine, creating a closed-loop system where every attack is both reproducible and detectable.
 
@@ -266,7 +274,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 | 132 | `nlp_strings` | ML | String-sequence analysis — obfuscated shellcode strings, dual-use API chains |
 | 133 | `dmar_enforcement` | DMA/IOMMU | Intel DMAR remapping walk — RMRR unity mappings, forged entries, remap holes |
 | 134 | `ivrs_table` | DMA/IOMMU | AMD-Vi IVRS/IVMD walk — full-memory unity maps, forged block walks |
-| 135 | `nvram_verifier` | NVRAM | Authenticated variable store vs TCG event log — unmeasured Secure Boot writes, dbx downgrades |
+| 135 | `nvram_verifier` | NVRAM | Authenticated variable values vs a separately supplied same-boot TCG log; missing evidence is inconclusive |
 | 136 | `pe_loader_bypass` | Secure Boot | Signed loader mapping unsigned child PEs (CVE-2024-7344 class) |
 | 137 | `rust_uefi_module` | Rust UEFI | Rust-UEFI binary identification + CommBuffer confused-deputy (TOCTOU) rule |
 | 138 | `pxe_icmp_overflow` | Network/PXE | ICMP error overflow past the 504-byte `EFI_PXE_BASE_CODE_MODE.IcmpError` field (CVE-2026-97631) |
@@ -279,7 +287,7 @@ All offense modules ship with `SIMULATION_MODE = TRUE` — they model behavior w
 |--------|--------|--------|
 | True Positive Rate | ≥ 80% (CI-enforced) | Measured via adversary corpus |
 | False Positive Rate | ≤ 10% (CI-enforced) | Measured against clean firmware baselines |
-| Scan Latency | < 500ms | Per-image, full 132-detector sweep |
+| Scan Latency | < 500ms (goal, not a universal guarantee) | Measure by image size, hardware, and detector profile |
 
 ---
 
@@ -728,9 +736,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for detailed guidelines.
 
 ## 📜 License
 
-Released under a restrictive academic research license. See [`LICENSE`](LICENSE) for full terms.
+Released under **BSD-2-Clause-Patent**. See [`LICENSE`](LICENSE) for the governing terms.
 
-**Key restrictions:** Academic/educational use only. No commercial use. No weaponization. Must maintain all safety mechanisms. Must comply with institutional oversight.
+The project's defensive-research guidance is a safety policy, not an additional license restriction. Keep simulation defaults and lab safeguards intact during research.
 
 ---
 

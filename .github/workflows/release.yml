@@ -5,7 +5,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -37,31 +37,32 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
+          toolchain: 1.99.0
           targets: ${{ matrix.target }}
 
       - name: Install cross (Linux ARM64)
         if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --git https://github.com/cross-rs/cross --rev a9301e91f72bba3850460512685f6b16062015ff --locked
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: src/barzakh-scanner-rs
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
         working-directory: src/barzakh-scanner-rs
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --workspace --release --locked --target ${{ matrix.target }}
 
       - name: Build (cross)
         if: matrix.cross
         working-directory: src/barzakh-scanner-rs
-        run: cross build --release --target ${{ matrix.target }}
+        run: cross build --workspace --release --locked --target ${{ matrix.target }}
 
       - name: Rename binaries (Unix)
         if: runner.os != 'Windows'
@@ -89,25 +90,25 @@ jobs:
                     "barzakh-agent-${{ matrix.target }}.exe"
 
       - name: Upload scanner artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: barzakh-scanner-${{ matrix.target }}${{ matrix.ext }}
           path: barzakh-scanner-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload adversary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: barzakh-adversary-${{ matrix.target }}${{ matrix.ext }}
           path: barzakh-adversary-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: barzakh-server-${{ matrix.target }}${{ matrix.ext }}
           path: barzakh-server-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload agent artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: barzakh-agent-${{ matrix.target }}${{ matrix.ext }}
           path: barzakh-agent-${{ matrix.target }}${{ matrix.ext }}
@@ -116,23 +117,55 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
 
     steps:
+      - name: Checkout source for dependency SBOM
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Generate SPDX source dependency SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: src/barzakh-scanner-rs
+          format: spdx-json
+          output-file: barzakh.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
 
       - name: Prepare release assets
         run: |
           mkdir -p release
+          cp barzakh.spdx.json release/
           find artifacts -type f -exec cp {} release/ \;
           cd release
           sha256sum * > sha256sums.txt
           cat sha256sums.txt
 
+      - name: Attest release assets using GitHub OIDC
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: release/*
+
+      - name: Attest source dependency SBOM for release binaries
+        uses: actions/attest-sbom@10926c72720ffc3f7b666661c8e55b1344e2a365 # v2
+        with:
+          subject-path: |
+            release/barzakh-scanner-*
+            release/barzakh-adversary-*
+            release/barzakh-server-*
+            release/barzakh-agent-*
+          sbom-path: barzakh.spdx.json
+
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true
           files: release/*

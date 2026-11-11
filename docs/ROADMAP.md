@@ -2,6 +2,13 @@
 
 > **Last Updated:** 2026-11-10 | **Status:** Phase 2 shipped; Phases 3–4 descoped (see below)
 
+> **Hardening update (2026-11-11):** scan outcomes and input hashes, secure
+> server defaults/bounded workers, manifest validation, shared input snapshots,
+> parser fuzzing, and release attestations are implemented in the working tree.
+> See [HARDENING.md](HARDENING.md) for limitations. Missing same-boot NVRAM evidence
+> is inconclusive; historical synthetic assertions are not proof of real-world
+> recall. Earlier design/acceptance tables below describe goals, not guarantees.
+
 ---
 
 ## 🧭 Vision
@@ -235,13 +242,13 @@ Phase 0 (hardening)
 
 | Metric | Current | Target | Phase |
 |--------|---------|--------|-------|
-| Clean corpus | synthetic only | + real vendor firmware set | 0.1 |
+| Clean corpus | pinned shim/OVMF set plus synthetic regression | broader independent vendor/architecture set | 0.1 |
 | iforest TPR / FPR @ corpus | 0.62 / 0.01 | ≥ 0.80 / ≤ 0.02 | 0.2 |
-| Server auth / signed webhooks | none | enforced by default | 0.3 |
-| Reproducible attack-detect loop | scripts, manual | one command, CI-gated | 2 |
-| Runtime SMI telemetry | none | per-core histogram, ≤ 1 SMI to alert | 3 |
-| Detection-rule deploy latency | binary release | hot-reload ≤ seconds, sandboxed | 4 |
-| Rust firmware modules | 0 | canary/trap-page Standalone MM driver in range | 5 |
+| Server auth / signed webhooks | auth required (explicit loopback dev exception); HMAC webhooks available | deployment verification | 0.3 |
+| Reproducible attack-detect loop | range command and CI job implemented | retain independent negative controls | 2 |
+| Runtime SMI telemetry | descoped to Warmor | not a Barzakh deliverable | 3 |
+| Wasm policy engine | descoped to Warmor | not a Barzakh deliverable | 4 |
+| Rust firmware modules | RustKitPkg prototype present | independently validate remaining MM goals | 5 |
 | Raw-memory kernel attack surface | none | still none (CI-enforced) | all |
 
 ---

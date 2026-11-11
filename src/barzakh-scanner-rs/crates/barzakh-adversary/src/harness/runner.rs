@@ -154,6 +154,15 @@ impl FuzzHarness {
     ) -> Result<Option<GapEntry>> {
         let mut scanner = BarzakhScanner::new(None);
         let result = scanner.scan(file_path, None);
+        anyhow::ensure!(
+            !result
+                .detector_runs
+                .iter()
+                .any(|r| r.status == barzakh_core::DetectorStatus::Error),
+            "detector execution failed while fuzzing {}: {:?}",
+            file_path.display(),
+            result.detector_runs
+        );
 
         let expected = payload.expected_detections();
         let mut missed = Vec::new();

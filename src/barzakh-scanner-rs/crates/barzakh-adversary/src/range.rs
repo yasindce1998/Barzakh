@@ -830,6 +830,13 @@ fn run_live_case(
 
     for artifact in [&esp_path, &dropper_path, &payload_path] {
         let result = scanner.scan(artifact, None);
+        if result.status != barzakh_core::ScanStatus::Complete {
+            report.failures.push(format!(
+                "incomplete scan of deployment artifact {} ({})",
+                artifact.display(),
+                result.status.as_str()
+            ));
+        }
         deployment.extend(result.findings.iter().map(|f| f.detector.clone()));
         deployment_verdict |= result.summary.bootkit_detected;
     }
@@ -837,7 +844,16 @@ fn run_live_case(
     deployment.dedup();
 
     if !opts.skip_memory_scan {
+        scanner.max_image_bytes = (config.memory_mb as u64)
+            .saturating_mul(1024 * 1024)
+            .saturating_add(64 * 1024 * 1024);
         let mem_result = scanner.scan(&mem_dump, None);
+        if mem_result.status != barzakh_core::ScanStatus::Complete {
+            report.failures.push(format!(
+                "incomplete guest memory scan ({})",
+                mem_result.status.as_str()
+            ));
+        }
         let mut mem_findings: Vec<String> = mem_result
             .findings
             .iter()

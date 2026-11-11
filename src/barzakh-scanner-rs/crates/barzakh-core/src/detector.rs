@@ -35,6 +35,30 @@ pub struct Finding {
     pub details: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommendation: Option<String>,
+    /// Evidence strength is independent of severity and numerical confidence.
+    #[serde(default)]
+    pub evidence_kind: EvidenceKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Evidence>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceKind {
+    #[default]
+    Heuristic,
+    Structural,
+    Cryptographic,
+    Insufficient,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Evidence {
+    pub offset: Option<u64>,
+    pub structure_path: String,
+    pub observed: String,
+    pub expected: String,
+    pub provenance: String,
 }
 
 fn default_confidence() -> f64 {
@@ -51,6 +75,8 @@ impl Finding {
             confidence: default_confidence(),
             details: None,
             recommendation: None,
+            evidence_kind: EvidenceKind::Heuristic,
+            evidence: None,
         }
     }
 
@@ -68,10 +94,21 @@ impl Finding {
         self.confidence = confidence;
         self
     }
+
+    pub fn with_evidence(mut self, kind: EvidenceKind, evidence: Evidence) -> Self {
+        self.evidence_kind = kind;
+        self.evidence = Some(evidence);
+        self
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum DetectorError {
+    #[error("not applicable: {0}")]
+    NotApplicable(String),
+
+    #[error("insufficient evidence: {0}")]
+    InsufficientEvidence(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -88,4 +125,9 @@ pub enum DetectorError {
 pub trait Detector: Send + Sync {
     fn name(&self) -> &str;
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError>;
+    /// Built-in detectors consume the same immutable snapshot. Legacy plugins
+    /// remain supported, but should override this method to avoid rereads.
+    fn detect_context(&self, context: &crate::ScanContext) -> Result<Vec<Finding>, DetectorError> {
+        self.detect(context.path())
+    }
 }

@@ -87,7 +87,10 @@ impl Detector for SecureBootDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&crate::ScanContext::load(target_path)?)
+    }
+    fn detect_context(&self, context: &crate::ScanContext) -> Result<Vec<Finding>, DetectorError> {
+        let data = context.shared_bytes();
         let findings = self.check_secure_boot_state(&data);
         Ok(findings)
     }

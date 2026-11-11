@@ -6,7 +6,11 @@
 
 ## 🧠 Overview
 
-Barzakh pairs its 132 deterministic detectors with a lightweight, dependency-free ML layer for problems where fixed heuristics underperform: novel implants that match no known signature, and obfuscated string content that simple pattern rules miss. Everything is implemented in pure Rust — no Python runtime, no external model files beyond the trained JSON.
+Barzakh pairs its [registered detectors](CAPABILITIES.md) with a lightweight Rust
+ML layer for anomaly and string analysis. Synthetic-corpus scores do not establish
+real-world generalization; use independently labeled, family-disjoint held-out
+data before claiming accuracy. Manifest scan validation supports such splits;
+the existing ML training command still uses its legacy corpus workflow.
 
 | Component | Technique | Purpose |
 |-----------|-----------|---------|

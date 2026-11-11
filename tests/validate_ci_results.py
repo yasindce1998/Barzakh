@@ -20,6 +20,8 @@ def main():
         sys.exit(1)
 
     errors = []
+    if data.get("status") != "complete":
+        errors.append("scan did not complete; failed/partial outcomes cannot pass E2E")
 
     # Structural validation
     for key in ("summary", "findings"):

@@ -4,6 +4,39 @@ All notable changes to the Barzakh firmware security platform.
 Format based on [Keep a Changelog](https://keepachangelog.com/); the
 project follows semantic versioning. Dates are ISO-8601.
 
+## [Unreleased]
+
+### Added
+- Explicit complete/partial/failed scans, per-detector outcomes and timing,
+  input/evidence SHA-256 hashes, and persisted full results.
+- Immutable shared input snapshots for all built-in and bundled extension
+  detectors; bounded regular-file loading and a p50/p95/RSS benchmark example.
+- Manifest-labeled corpus evaluation with hash validation, strict sample
+  requirements, family-disjoint splits, and per-detector precision/recall.
+- Coverage-guided parser fuzzing, minimized overflow regressions, pinned CI
+  dependencies/toolchain, generated capability docs, and release SPDX source
+  dependency SBOMs with OIDC provenance/attestations.
+
+### Changed
+- **Compatibility:** `scan --json` emits a ScanResult object rather than an array;
+  findings are at `.findings`. Exit code 2 means incomplete/failed execution,
+  distinct from detection (1) and a completed negative verdict (0).
+- Server authentication is required by default; unauthenticated development
+  requires `--insecure-dev` on loopback. Approved scan roots, file-size limits,
+  bounded shared workers/queues, and HTTP 429 overload responses protect scans.
+- NVRAM correlation requires separately acquired same-boot evidence; absent logs
+  and cross-variable timestamp ordering are no longer claimed as proven attacks.
+  Two historical synthetic fixtures are explicitly inconclusive.
+- Dashboard supports entering API keys without persistent browser storage and
+  never labels partial/failed scans clean. README license text now matches the
+  existing BSD-2-Clause-Patent LICENSE (no license terms changed).
+
+### Fixed
+- libFuzzer-discovered firmware-volume length addition overflow and incorrect
+  relative-to-absolute header offsets; regression inputs are encoded in tests.
+
+See [docs/HARDENING.md](docs/HARDENING.md) for migration notes and limitations.
+
 ## [0.7.0] — 2026-11-10
 
 ### Phase 0 — Foundation & credibility hardening
