@@ -396,7 +396,9 @@ jobs:
           toolchain: 1.99.0
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --version 0.21.2 --locked
+        # RustSec now includes CVSS 4.0 advisories; older audit parsers fail
+        # while loading the database before any dependencies are checked.
+        run: cargo install cargo-audit --version 0.23.0 --locked
 
       - name: Run Audit
         working-directory: src/barzakh-scanner-rs
