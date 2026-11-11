@@ -16,6 +16,13 @@ This security policy applies to:
 
 ## Security Principles
 
+**Implementation status:** policy statements below describe intended operational
+controls, not a certification that each deployment enforces them. Current scan
+outcomes, server safeguards, CI/release attestations, and known limitations are
+documented in [docs/HARDENING.md](docs/HARDENING.md). In particular, HSM signing of
+all EFI files, immutable archival storage, and external audit cadence must not
+be inferred from the presence of this policy.
+
 ### 1. Defense-in-Depth
 
 Multiple layers of security controls:

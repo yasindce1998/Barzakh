@@ -8,7 +8,8 @@
 #   docker build -f Dockerfile.runtime -t barzakh/runtime .
 #
 # Run the dashboard/API server (default entrypoint, port 8420):
-#   docker run --rm -p 8420:8420 -v barzakh-data:/var/lib/barzakh barzakh/runtime
+#   docker run --rm -p 127.0.0.1:8420:8420 -e BARZAKH_API_KEY \
+#       -v barzakh-data:/var/lib/barzakh barzakh/runtime
 #
 # barzakh-scanner can be run from this image too — mount the firmware
 # image and override the entrypoint:
@@ -20,9 +21,8 @@
 # ---------------------------------------------------------------------------
 # Stage 1: builder
 # ---------------------------------------------------------------------------
-# Note: rust:1-slim tracks the latest stable toolchain — the workspace
-# uses edition 2024 crates, which require Rust >= 1.85.
-FROM rust:1-slim AS builder
+# Keep aligned with src/barzakh-scanner-rs/rust-toolchain.toml.
+FROM rust:1.99.0-slim AS builder
 
 WORKDIR /build
 
@@ -62,4 +62,5 @@ USER barzakh
 
 EXPOSE 8420
 
-ENTRYPOINT ["barzakh-server", "--port", "8420", "--db", "/var/lib/barzakh/barzakh.db"]
+ENTRYPOINT ["barzakh-server"]
+CMD ["--bind", "0.0.0.0", "--port", "8420", "--db", "/var/lib/barzakh/barzakh.db", "--payloads-dir", "/var/lib/barzakh/payloads", "--scan-root", "/var/lib/barzakh/payloads"]

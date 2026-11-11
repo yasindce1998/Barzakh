@@ -20,7 +20,10 @@ services:
     image: barzakh/server
     container_name: barzakh-server
     ports:
-      - "8420:8420"
+      - "127.0.0.1:8420:8420"
+    environment:
+      BARZAKH_API_KEY: ${BARZAKH_API_KEY:?Set a nonempty BARZAKH_API_KEY in .env}
+    command: ["--bind", "0.0.0.0", "--db", "/var/lib/barzakh/barzakh.db", "--payloads-dir", "/var/lib/barzakh/payloads", "--scan-root", "/var/lib/barzakh/payloads"]
     volumes:
       - barzakh-data:/var/lib/barzakh
     restart: unless-stopped

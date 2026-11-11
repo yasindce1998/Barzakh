@@ -1,0 +1,32 @@
+name: Coverage-guided parser fuzzing
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly-2026-10-01
+          components: rust-src
+      - name: Install pinned fuzz runner
+        run: cargo +nightly-2026-10-01 install cargo-fuzz --version 0.13.1 --locked
+      - name: Fuzz bounded parser entry points (panic aborts are failures)
+        working-directory: src/barzakh-scanner-rs
+        run: |
+          cargo +nightly-2026-10-01 fetch --manifest-path fuzz/Cargo.toml --locked
+          sha256sum fuzz/Cargo.lock > /tmp/fuzz-lock.sha256
+          CARGO_NET_OFFLINE=true cargo +nightly-2026-10-01 fuzz run parsers -- -max_total_time=600 -max_len=65536 -rss_limit_mb=2048 -dict=fuzz/parsers.dict
+          sha256sum --check /tmp/fuzz-lock.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: parser-fuzz-regressions
+          path: src/barzakh-scanner-rs/fuzz/artifacts/
+          if-no-files-found: ignore

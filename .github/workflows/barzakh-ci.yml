@@ -12,6 +12,9 @@ on:
 env:
   EDK2_VERSION: edk2-stable202405
 
+permissions:
+  contents: read
+
 jobs:
   build-bootkit:
     name: Build UEFI Bootkit
@@ -20,12 +23,12 @@ jobs:
     
     steps:
       - name: Checkout Barzakh
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: barzakh
       
       - name: Cache EDK II
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: cache-edk2
         with:
           path: edk2
@@ -86,7 +89,7 @@ jobs:
           build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc
       
       - name: Upload Bootkit Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bootkit-binaries
           path: edk2/Build/BootkitPkg/DEBUG_GCC5/X64/*.efi
@@ -98,12 +101,12 @@ jobs:
 
     steps:
       - name: Checkout Barzakh
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: barzakh
 
       - name: Cache EDK II
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: cache-edk2-aarch64
         with:
           path: edk2
@@ -166,7 +169,7 @@ jobs:
           build -a AARCH64 -t GCC5 -p BootkitPkg/BootkitPkgAarch64.dsc
 
       - name: Upload AARCH64 Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bootkit-aarch64-binaries
           path: edk2/Build/BootkitPkgAarch64/DEBUG_GCC5/AARCH64/*.efi
@@ -178,7 +181,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install NASM
         run: |
@@ -201,7 +204,7 @@ jobs:
           [ "$VBR_SIZE" -eq 512 ] || { echo "ERROR: VBR is not 512 bytes"; exit 1; }
 
       - name: Upload Legacy Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: legacy-bootkit-binaries
           path: build/legacy/*.bin
@@ -213,22 +216,24 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: 1.99.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: src/barzakh-scanner-rs
 
       - name: Build Release Binary
         working-directory: src/barzakh-scanner-rs
-        run: cargo build --release
+        run: cargo build --workspace --release --locked
 
       - name: Upload Scanner Binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: barzakh-scanner-rs
           path: src/barzakh-scanner-rs/target/release/barzakh-scanner
@@ -240,15 +245,16 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
+          toolchain: 1.99.0
           components: rustfmt, clippy
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: src/barzakh-scanner-rs
 
@@ -258,11 +264,14 @@ jobs:
 
       - name: Run Clippy
         working-directory: src/barzakh-scanner-rs
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run Tests
         working-directory: src/barzakh-scanner-rs
-        run: cargo test
+        run: cargo test --workspace --all-targets --locked
+
+      - name: Check generated capability documentation
+        run: python3 scripts/update-capabilities.py --check
 
   test-killswitch-c:
     name: Test Kill-Switch Logic (C)
@@ -271,7 +280,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build and run kill-switch unit tests
         run: |
@@ -286,13 +295,15 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: 1.99.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: src/barzakh-scanner-rs
 
@@ -323,13 +334,15 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: 1.99.0
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: src/barzakh-scanner-rs
 
@@ -363,7 +376,7 @@ jobs:
 
       - name: Upload Range Artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: range-artifacts
           path: src/barzakh-scanner-rs/build/range/
@@ -375,15 +388,17 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: 1.99.0
 
       - name: Install cargo-audit
-        run: |
-          curl -LSfs https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall cargo-audit --no-confirm
+        # RustSec now includes CVSS 4.0 advisories; older audit parsers fail
+        # while loading the database before any dependencies are checked.
+        run: cargo install cargo-audit --version 0.23.0 --locked
 
       - name: Run Audit
         working-directory: src/barzakh-scanner-rs
@@ -397,16 +412,16 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download Bootkit Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bootkit-binaries
           path: ./binaries
 
       - name: Download Scanner Binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: barzakh-scanner-rs
           path: ./binaries
@@ -423,7 +438,7 @@ jobs:
 
       - name: Upload E2E Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: qemu-e2e-results
           path: |
@@ -438,7 +453,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build Documentation
         run: |
@@ -447,7 +462,7 @@ jobs:
           cp README.md docs/_build/html/ 2>/dev/null || true
 
       - name: Upload Documentation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: documentation
           path: docs/_build/html
@@ -461,10 +476,10 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       
       - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
       
@@ -491,7 +506,7 @@ jobs:
           echo "- Documentation" >> RELEASE_NOTES.md
       
       - name: Upload Release Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-package
           path: barzakh-release.tar.gz

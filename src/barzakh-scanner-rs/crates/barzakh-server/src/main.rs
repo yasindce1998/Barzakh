@@ -13,28 +13,67 @@ async fn main() -> Result<()> {
 
     let mut config = ServerConfig::default();
     let mut args = std::env::args().skip(1);
+    let mut explicit_scan_roots = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--bind" => {
+                config.bind = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--bind requires an IP address"))?
+                    .parse()?
+            }
+            "--insecure-dev" => config.insecure_dev = true,
+            "--scan-root" => {
+                let root = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--scan-root requires a directory"))?;
+                if !explicit_scan_roots {
+                    config.scan_roots.clear();
+                    explicit_scan_roots = true;
+                }
+                config.scan_roots.push(root.into());
+            }
+            "--max-image-bytes" => {
+                config.max_image_bytes = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("missing byte limit"))?
+                    .parse()?
+            }
+            "--max-concurrent-scans" => {
+                config.max_concurrent_scans = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("missing concurrency limit"))?
+                    .parse()?
+            }
+            "--max-queued-scans" => {
+                config.max_queued_scans = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("missing queue limit"))?
+                    .parse()?
+            }
             "--port" => {
                 config.port = args
                     .next()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(config.port);
+                    .ok_or_else(|| anyhow::anyhow!("--port requires a number"))?
+                    .parse()?;
             }
             "--db" => {
-                if let Some(db) = args.next() {
-                    config.db_path = db.into();
-                }
+                config.db_path = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--db requires a path"))?
+                    .into();
             }
             "--payloads-dir" => {
-                if let Some(dir) = args.next() {
-                    config.payloads_dir = dir.into();
-                }
+                config.payloads_dir = args
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--payloads-dir requires a directory"))?
+                    .into();
             }
             "--api-key" => {
-                if let Some(key) = args.next() {
-                    config.api_key = Some(key);
-                }
+                config.api_key = Some(
+                    args.next()
+                        .ok_or_else(|| anyhow::anyhow!("--api-key requires a nonempty key"))?,
+                );
             }
             "--help" | "-h" => {
                 println!(
@@ -44,7 +83,9 @@ async fn main() -> Result<()> {
                      Authentication: pass --api-key (or set BARZAKH_API_KEY) to require \
                      an API key on every /api endpoint except /api/health, via the \
                      X-API-Key or Authorization: Bearer header. Without it the server \
-                     logs a warning and serves unauthenticated.\n\n\
+                     refuses to start unless --insecure-dev is explicitly set on loopback.\n\n\
+                     Safety: --bind 127.0.0.1, --scan-root DIR (repeatable; default payloads),\n\
+                     --max-image-bytes 536870912, --max-concurrent-scans 2, --max-queued-scans 8.\n\n\
                      Endpoints: GET / (dashboard), /api/health, /api/detectors, /api/scans,\n\
                      POST /api/scans {{\"target\": \"<firmware path>\"}}, GET /api/scans/{{id}},\n\
                      GET /api/scans/{{id}}/report?format=json|html|markdown|sarif|csv,\n\

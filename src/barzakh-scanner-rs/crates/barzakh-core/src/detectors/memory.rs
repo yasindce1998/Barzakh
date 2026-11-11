@@ -140,11 +140,14 @@ impl Detector for MemoryDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&crate::ScanContext::load(target_path)?)
+    }
+    fn detect_context(&self, context: &crate::ScanContext) -> Result<Vec<Finding>, DetectorError> {
+        let data = context.shared_bytes();
         let mut findings = Vec::new();
 
         // Signature scanning with Aho-Corasick
-        for mat in self.signature_matcher.find_iter(&data) {
+        for mat in self.signature_matcher.find_iter(data.as_slice()) {
             let pattern_idx = mat.pattern().as_usize();
             let sig_name = match pattern_idx {
                 0 => "BlackLotus",

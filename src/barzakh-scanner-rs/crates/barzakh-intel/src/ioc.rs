@@ -158,7 +158,13 @@ impl Detector for IocFeedDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&barzakh_core::ScanContext::load(target_path)?)
+    }
+    fn detect_context(
+        &self,
+        context: &barzakh_core::ScanContext,
+    ) -> Result<Vec<Finding>, DetectorError> {
+        let data = context.shared_bytes();
         let hits = self.feed.match_image(&data);
 
         Ok(hits

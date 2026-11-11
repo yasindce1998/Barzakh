@@ -57,8 +57,10 @@ impl FirmwareVolumeDetector {
         let mut pos = 0;
         while pos + 4 <= data.len() {
             if let Some(offset) = data[pos..].windows(4).position(|w| w == EFI_FV_SIGNATURE) {
-                let fv_start = pos + offset.saturating_sub(40); // FV header starts before _FVH
-                offsets.push(fv_start);
+                // Subtract from the absolute position, not the window offset.
+                if let Some(fv_start) = (pos + offset).checked_sub(40) {
+                    offsets.push(fv_start);
+                }
                 pos = pos + offset + 4;
             } else {
                 break;
@@ -75,13 +77,16 @@ impl FirmwareVolumeDetector {
             return findings;
         }
 
-        let fv_length = u64::from_le_bytes(
+        let raw_length = u64::from_le_bytes(
             data[fv_offset + 32..fv_offset + 40]
                 .try_into()
                 .unwrap_or([0; 8]),
-        ) as usize;
+        );
+        let Ok(fv_length) = usize::try_from(raw_length) else {
+            return findings;
+        };
 
-        if fv_length == 0 || fv_offset + fv_length > data.len() {
+        if fv_length < 56 || fv_length > data.len() - fv_offset {
             return findings;
         }
 
@@ -92,7 +97,7 @@ impl FirmwareVolumeDetector {
                 .unwrap_or([0; 2]),
         ) as usize;
 
-        if header_length > 0 && fv_offset + header_length <= data.len() {
+        if header_length >= 56 && header_length <= fv_length && header_length.is_multiple_of(2) {
             let mut sum: u16 = 0;
             for chunk in data[fv_offset..fv_offset + header_length].chunks(2) {
                 let word = if chunk.len() == 2 {
@@ -135,7 +140,10 @@ impl Detector for FirmwareVolumeDetector {
     }
 
     fn detect(&self, target_path: &Path) -> Result<Vec<Finding>, DetectorError> {
-        let data = std::fs::read(target_path).map_err(DetectorError::Io)?;
+        self.detect_context(&crate::ScanContext::load(target_path)?)
+    }
+    fn detect_context(&self, context: &crate::ScanContext) -> Result<Vec<Finding>, DetectorError> {
+        let data = context.shared_bytes();
         let mut findings = Vec::new();
 
         let fv_offsets = self.find_firmware_volumes(&data);
@@ -156,5 +164,32 @@ impl Detector for FirmwareVolumeDetector {
         }
 
         Ok(findings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn minimized_fuzzer_overflow_regression() {
+        // Minimized from libFuzzer's 60-byte crash; no sensitive firmware data.
+        let mut data = vec![0xff; 60];
+        data[..4].copy_from_slice(b"_FVH");
+        data[16..20].copy_from_slice(b"_FVH");
+        data[49..56].fill(0);
+        data[56] = 8;
+        let detector = FirmwareVolumeDetector;
+        assert!(detector.check_fv_integrity(&data, 4).is_empty());
+        assert!(detector.find_firmware_volumes(&data).is_empty());
+    }
+    #[test]
+    fn absolute_header_offsets_and_maximal_lengths_are_bounded() {
+        let mut data = vec![0u8; 128];
+        data[40..44].copy_from_slice(b"_FVH");
+        data[104..108].copy_from_slice(b"_FVH");
+        data[32..40].copy_from_slice(&u64::MAX.to_le_bytes());
+        let detector = FirmwareVolumeDetector;
+        assert_eq!(detector.find_firmware_volumes(&data), [0, 64]);
+        assert!(detector.check_fv_integrity(&data, 0).is_empty());
     }
 }

@@ -115,6 +115,8 @@ qemu-*.log
 *.qcow2.lock
 
 # Test Artifacts
+src/barzakh-scanner-rs/fuzz/artifacts/
+src/barzakh-scanner-rs/fuzz/corpus/
 test-disk.qcow2
 test-output/
 test-results/
@@ -214,5 +216,4 @@ test-data/real/malicious/
 # 6. All binaries must be reproducibly built from source
 # 7. SBOM files are generated during build, not committed
 # 8. Signing artifacts are generated, not stored in repo
-
 

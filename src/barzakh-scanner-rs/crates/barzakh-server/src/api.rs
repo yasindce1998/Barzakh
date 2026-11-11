@@ -51,7 +51,7 @@ async fn api_key_auth(
         return next.run(request).await;
     };
     let path = request.uri().path();
-    if path == "/api/health" {
+    if path == "/api/health" || path == "/" {
         return next.run(request).await;
     }
 
@@ -140,47 +140,19 @@ async fn submit_scan(
     State(state): State<Arc<AppState>>,
     Json(request): Json<SubmitScan>,
 ) -> Result<(StatusCode, Json<ScanSubmitted>), (StatusCode, Json<serde_json::Value>)> {
-    let target = PathBuf::from(&request.target);
-
-    let scan_id = {
-        let mut store = state.store.lock().await;
-        store
-            .record_pending(&request.target)
-            .map_err(|e| scan_error(e.to_string()))?
-    };
-
-    // Run the CPU-bound scan off the event loop, then fill in the row.
-    let task_state = Arc::clone(&state);
-    tokio::spawn(async move {
-        let scan_target = target.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut scanner = barzakh_core::BarzakhScanner::new(None);
-            scanner.scan(&scan_target, None)
-        })
-        .await;
-
-        let mut store = task_state.store.lock().await;
-        match result {
-            Ok(scan) => {
-                if let Err(error) = store.complete(scan_id, &scan) {
-                    tracing::warn!("completing scan {scan_id} failed: {error}");
-                } else {
-                    tracing::info!(
-                        "scan {scan_id} of {} complete (risk {})",
-                        target.display(),
-                        scan.risk.score
-                    );
-                }
+    crate::validate_target(&state, std::path::Path::new(&request.target)).map_err(bad_request)?;
+    let scan_id = crate::enqueue_scan(state, request.target)
+        .await
+        .map_err(|e| {
+            if e.to_string() == "scan queue is full" {
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+            } else {
+                bad_request(e)
             }
-            Err(join_error) => {
-                let message = format!("scan worker failed: {join_error}");
-                tracing::error!("{message}");
-                if let Err(error) = store.fail(scan_id, &message) {
-                    tracing::warn!("failing scan {scan_id} failed: {error}");
-                }
-            }
-        }
-    });
+        })?;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -197,6 +169,7 @@ fn record_json(record: &barzakh_store::history::ScanRecord) -> serde_json::Value
         "scan_id": record.id,
         "target": record.target,
         "status": record.status,
+        "error": record.error,
         "bootkit_detected": record.bootkit_detected,
         "risk_score": record.risk_score,
         "risk_level": record.risk_level,
@@ -226,7 +199,7 @@ async fn get_scan(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let store = state.store.lock().await;
     let record = store.get(id).map_err(|_| not_found(id))?;
-    let findings = if record.status == "complete" {
+    let findings = if record.status != "running" {
         store
             .get_findings(id)
             .map_err(|e| scan_error(e.to_string()))?
@@ -251,6 +224,16 @@ async fn get_scan(
         "timestamp": record.timestamp,
         "findings": findings,
     });
+    if let Some(result) = store
+        .get_result(id)
+        .map_err(|e| scan_error(e.to_string()))?
+    {
+        body["detector_runs"] =
+            serde_json::to_value(result.detector_runs).map_err(|e| scan_error(e.to_string()))?;
+        body["input_sha256"] = serde_json::json!(result.input_sha256);
+        body["event_log_sha256"] = serde_json::json!(result.event_log_sha256);
+        body["errors"] = serde_json::json!(result.errors);
+    }
     if let Some(error) = record.error {
         body["error"] = serde_json::json!(error);
     }
@@ -280,6 +263,26 @@ async fn scan_report(
     let store = state.store.lock().await;
     let findings = store.get_findings(id).map_err(|_| not_found(id))?;
     let record = store.get(id).map_err(|_| not_found(id))?;
+
+    if format == ReportFormat::Json {
+        if let Some(result) = store
+            .get_result(id)
+            .map_err(|e| scan_error(e.to_string()))?
+        {
+            return Ok(Json(serde_json::json!({
+                "scan_id": id, "format": "json",
+                "content": serde_json::to_string_pretty(&result).map_err(|e| scan_error(e.to_string()))?,
+            })));
+        }
+    }
+    if record.status != "complete" {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(
+                serde_json::json!({"error": "findings-only reports require a complete scan", "status": record.status}),
+            ),
+        ));
+    }
 
     let generator =
         barzakh_core::reports::ReportGenerator::new(&findings, None).with_target(&record.target);
@@ -402,15 +405,32 @@ async fn add_kb(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AddKbRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let image = std::fs::read(&request.target).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": format!("reading {}: {e}", request.target),
-            })),
-        )
-    })?;
-    let mut profile = FirmwareProfile::from_image(&image);
+    let path = crate::validate_target(&state, std::path::Path::new(&request.target))
+        .map_err(bad_request)?;
+    let limit = state.max_image_bytes;
+    let permit = Arc::clone(&state.scan_slots)
+        .try_acquire_owned()
+        .map_err(|_| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({"error": "scan queue is full"})),
+            )
+        })?;
+    let worker = Arc::clone(&state.scan_workers)
+        .acquire_owned()
+        .await
+        .map_err(|e| scan_error(e.to_string()))?;
+    let worker_state = Arc::clone(&state);
+    let mut profile = tokio::task::spawn_blocking(move || -> anyhow::Result<FirmwareProfile> {
+        let _permit = permit;
+        let _worker = worker;
+        let path = crate::validate_target(&worker_state, &path)?;
+        let context = barzakh_core::ScanContext::load_with_limit(&path, limit)?;
+        Ok(FirmwareProfile::from_image(context.data()))
+    })
+    .await
+    .map_err(|e| scan_error(e.to_string()))?
+    .map_err(bad_request)?;
     profile.vendor = request.vendor.unwrap_or_default();
     profile.device = request.device.unwrap_or_default();
     profile.family = request.family;
@@ -446,6 +466,14 @@ async fn generate_payload(
     State(state): State<Arc<AppState>>,
     Json(request): Json<GenerateRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    let _slot = Arc::clone(&state.scan_slots)
+        .try_acquire_owned()
+        .map_err(|_| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({"error": "scan queue is full"})),
+            )
+        })?;
     let payloads = barzakh_adversary::create_all_payloads();
     let payload = payloads
         .iter()
@@ -488,6 +516,11 @@ async fn generate_payload(
         barzakh_adversary::Arch::Armv7 => "armv7",
     };
     let size = request.size.unwrap_or(0x10000);
+    if !(4096..=16 * 1024 * 1024).contains(&size) {
+        return Err(bad_request(anyhow::anyhow!(
+            "payload size must be 4096..16777216 bytes"
+        )));
+    }
     let config = barzakh_adversary::PayloadConfig {
         arch,
         size,
@@ -554,11 +587,15 @@ struct AddSchedule {
 async fn add_schedule(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AddSchedule>,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    crate::validate_target(&state, std::path::Path::new(&request.target)).map_err(bad_request)?;
     let now = chrono::Utc::now().timestamp().max(0) as u64;
     let mut schedules = state.schedules.lock().await;
+    if schedules.len() >= 128 {
+        return Err(bad_request(anyhow::anyhow!("schedule limit reached")));
+    }
     let schedule_id = schedules.len() as u64 + 1;
-    let interval_secs = request.interval_secs.max(30);
+    let interval_secs = request.interval_secs.clamp(30, 365 * 24 * 60 * 60);
     schedules.push(Schedule {
         id: schedule_id,
         target: request.target.clone(),
@@ -566,7 +603,7 @@ async fn add_schedule(
         next_run: now + interval_secs,
         runs: 0,
     });
-    (
+    Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({
             "status": "scheduled",
@@ -574,7 +611,7 @@ async fn add_schedule(
             "target": request.target,
             "interval_secs": interval_secs,
         })),
-    )
+    ))
 }
 
 async fn list_schedules(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
@@ -588,6 +625,13 @@ fn scan_error(message: String) -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(serde_json::json!({ "error": message })),
+    )
+}
+
+fn bad_request(error: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": error.to_string() })),
     )
 }
 
@@ -634,6 +678,10 @@ mod tests {
 
     fn test_state() -> Arc<AppState> {
         Arc::new(AppState {
+            scan_roots: vec![std::env::temp_dir().canonicalize().unwrap()],
+            max_image_bytes: 1024 * 1024,
+            scan_workers: Arc::new(tokio::sync::Semaphore::new(2)),
+            scan_slots: Arc::new(tokio::sync::Semaphore::new(4)),
             store: tokio::sync::Mutex::new(
                 barzakh_store::history::ScanStore::open(std::path::Path::new(":memory:")).unwrap(),
             ),
@@ -911,6 +959,8 @@ mod tests {
     #[tokio::test]
     async fn schedule_add_and_list() {
         let mut router = router(test_state());
+        let fw = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(fw.path(), [0u8; 64]).unwrap();
         let (status, json) = body_json(
             &mut router,
             Request::builder()
@@ -918,8 +968,7 @@ mod tests {
                 .uri("/api/schedule")
                 .header("Content-Type", "application/json")
                 .body(Body::from(
-                    serde_json::json!({ "target": "/tmp/fw.bin", "interval_secs": 3600 })
-                        .to_string(),
+                    serde_json::json!({ "target": fw.path(), "interval_secs": 3600 }).to_string(),
                 ))
                 .unwrap(),
         )

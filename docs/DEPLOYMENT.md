@@ -7,8 +7,8 @@ covering API authentication, TLS termination, and webhook integrity.
 
 ## 🔑 API Authentication (barzakh-server)
 
-Every `/api/*` endpoint (except the `/api/health` probe) can require an
-API key:
+Every `/api/*` endpoint (except `/api/health`) requires an API key in a normal
+deployment. See [HARDENING.md](HARDENING.md) for input roots and queue limits:
 
 ```bash
 # Via flag:
@@ -31,13 +31,10 @@ Behavior:
 | Configuration | Behavior |
 |---------------|----------|
 | Key set | All `/api/*` (except `/api/health`) require the key; comparisons are constant-time |
-| Key unset | Server serves unauthenticated and logs a **startup warning** |
+| Key unset | Startup is refused unless `--insecure-dev` is explicitly selected on loopback |
 
-> **Deviation from ROADMAP 0.3 ("auth enforced by default"):** for a
-> local scanning tool the friction of mandatory keys outweighs the
-> benefit, so authentication is opt-in with a loud warning rather than
-> on by default. Any internet-facing deployment **must** set a key (and
-> place the server behind TLS — see below).
+Unauthenticated development is loopback-only. Non-loopback binding always
+requires a key. Approved scan roots must be controlled by the operator.
 
 Generate a key with: `openssl rand -hex 32`.
 
@@ -45,7 +42,7 @@ Generate a key with: `openssl rand -hex 32`.
 
 ## 🔒 TLS Termination
 
-`barzakh-server` serves plain HTTP on `0.0.0.0:8420`. For anything beyond
+`barzakh-server` defaults to plain HTTP on `127.0.0.1:8420`. For anything beyond
 localhost, terminate TLS with a reverse proxy. The server itself never
 handles certificates — no private key material in the scanning process.
 

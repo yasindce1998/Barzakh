@@ -20,7 +20,9 @@ cargo clippy -- -D warnings
 cargo audit
 ```
 
-The Rust scanner has 22 integration tests covering all 18 detectors, baseline comparison, report generation, and corpus validation.
+The Rust workspace tests detectors, scan failures/partial outcomes, snapshot consistency,
+server authentication and resource limits, reports, baselines, and corpus validation.
+See the [generated detector registry](../docs/CAPABILITIES.md) rather than hardcoded counts.
 
 ## E2E Tests
 
@@ -35,8 +37,10 @@ This boots the bootkit in QEMU, extracts memory dumps and PCR values, then runs 
 ## Test Corpus
 
 The `corpus/` directory contains synthetic firmware samples used for TPR/FPR validation:
-- Files named `*malicious*` or `*infected*` are treated as positive samples
-- All others are treated as negative (benign) samples
+- Legacy synthetic validation accepts `malicious_*`/`infected_*` positives and `clean_*` negatives.
+- Other files are ignored; incomplete samples are explicitly listed and excluded, never counted as clean.
+- Use `validate --manifest` for explicit labels, SHA-256 verification, family-disjoint splits,
+  and per-detector metrics. `--strict` requires every sample and both classes.
 
 ## CI/CD Integration
 

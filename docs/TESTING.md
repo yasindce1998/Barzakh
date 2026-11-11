@@ -2,6 +2,14 @@
 
 This document defines the testing methodologies, environments, and validation criteria for Project Barzakh. Due to the low-level, firmware-centric nature of the project, testing is strictly controlled and heavily relies on virtualization and automation to ensure safety, reproducibility, and rigorous academic validation.
 
+Current commands and guarantees are in [HARDENING.md](HARDENING.md). Design targets
+below are not measured results. Run `cargo test --workspace --all-targets --locked`
+and `cargo clippy --workspace --all-targets --locked -- -D warnings` from the Rust
+workspace. Use `validate --manifest ... --strict` for reviewed independent samples;
+legacy synthetic results explicitly list incomplete samples outside denominators.
+Set `BARZAKH_REQUIRE_REAL_CORPUS=1` to reject missing real positive/negative samples.
+Do not interpret a skipped real-malware gate as a recall measurement.
+
 ## 1. Test Environment Setup
 
 All active execution and dynamic analysis must occur within the strictly defined virtualization sandbox to prevent accidental native infection.

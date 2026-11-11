@@ -21,6 +21,10 @@ fn state(api_key: Option<String>) -> Arc<AppState> {
     let dir = tempfile::tempdir().unwrap().keep();
     let db = dir.join("test.db");
     Arc::new(AppState {
+        scan_roots: vec![dir.canonicalize().unwrap()],
+        max_image_bytes: 1024 * 1024,
+        scan_workers: Arc::new(tokio::sync::Semaphore::new(2)),
+        scan_slots: Arc::new(tokio::sync::Semaphore::new(4)),
         store: tokio::sync::Mutex::new(ScanStore::open(&db).unwrap()),
         kb: tokio::sync::Mutex::new(KnowledgeBase::open(&db).unwrap()),
         schedules: tokio::sync::Mutex::new(Vec::new()),
@@ -116,4 +120,15 @@ async fn no_key_serves_unauthenticated() {
     let app = api::router(state(None));
     let (status, _) = get_json(app, "/api/detectors", &[]).await;
     assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn static_dashboard_can_load_before_entering_api_key() {
+    let response = api::router(state(Some("correct-key".into())))
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert!(String::from_utf8_lossy(&body).contains("id=\"api-key\""));
 }

@@ -7,11 +7,10 @@ use barzakh_core::Severity;
 const AUTH_VAR_HEADER_LEN: usize = 60;
 
 /// Emits firmware carrying a UEFI variable store (`$VSS`) whose `db`
-/// enrollment is *newer* than the `dbx` revocation list, and — critically —
-/// no TCG event log recording any `EV_EFI_VARIABLE_*` measurement: the
-/// signature of a CVE-2025-3052 / CVE-2024-7344-class silent Secure Boot
-/// downgrade performed by a vulnerable signed binary or custom PE loader
-/// writing NVRAM directly.
+/// enrollment is newer than the `dbx` revocation list and no independent
+/// TCG log is supplied. Historical regression fixture: this is insufficient
+/// evidence of a downgrade, not a validated positive detection. The expected
+/// detection below remains a tracked coverage gap until paired evidence exists.
 pub struct NvramSilentDowngradePayload;
 
 impl Payload for NvramSilentDowngradePayload {

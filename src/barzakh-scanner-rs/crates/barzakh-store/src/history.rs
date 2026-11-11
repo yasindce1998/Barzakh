@@ -13,9 +13,9 @@ pub struct ScanRecord {
     pub id: i64,
     pub timestamp: String,
     pub target: String,
-    /// Lifecycle: `running` → `complete` | `failed`.
+    /// Lifecycle: `running` → `complete` | `partial` | `failed`.
     pub status: String,
-    /// Failure message when `status = failed`.
+    /// Failure/evidence details for an incomplete outcome.
     pub error: Option<String>,
     pub bootkit_detected: bool,
     pub risk_score: u32,
@@ -94,31 +94,19 @@ impl ScanStore {
                  ALTER TABLE scans ADD COLUMN error TEXT;",
             )?;
         }
+        if !columns.iter().any(|c| c == "result_json") {
+            conn.execute_batch("ALTER TABLE scans ADD COLUMN result_json TEXT;")?;
+        }
         Ok(Self { conn })
     }
 
     /// Record a scan result; returns the scan id.
     pub fn record(&mut self, result: &ScanResult) -> anyhow::Result<i64> {
-        self.conn.execute(
-            "INSERT INTO scans (ts, target, bootkit_detected, risk_score, risk_level, \
-             total_findings, critical_count, high_count, medium_count, low_count, info_count, \
-             findings_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            rusqlite::params![
-                result.scan_info.start_time,
-                result.scan_info.target,
-                result.summary.bootkit_detected as i64,
-                result.risk.score,
-                result.risk.level.to_string(),
-                result.summary.total_findings as i64,
-                result.summary.critical_count as i64,
-                result.summary.high_count as i64,
-                result.summary.medium_count as i64,
-                result.summary.low_count as i64,
-                result.summary.info_count as i64,
-                serde_json::to_string(&result.findings)?,
-            ],
-        )?;
-        Ok(self.conn.last_insert_rowid())
+        // If persistence is interrupted between writes, leave a pending row,
+        // never a falsely complete scan with an empty result.
+        let id = self.record_pending(&result.scan_info.target)?;
+        self.complete(id, result)?;
+        Ok(id)
     }
 
     /// Insert a placeholder row for a scan that is about to run in the
@@ -139,10 +127,10 @@ impl ScanStore {
     /// Fill in a `running` scan row with its finished result.
     pub fn complete(&mut self, id: i64, result: &ScanResult) -> anyhow::Result<()> {
         let changed = self.conn.execute(
-            "UPDATE scans SET status = 'complete', error = NULL, bootkit_detected = ?2, \
+            "UPDATE scans SET bootkit_detected = ?2, \
              risk_score = ?3, risk_level = ?4, total_findings = ?5, critical_count = ?6, \
              high_count = ?7, medium_count = ?8, low_count = ?9, info_count = ?10, \
-             findings_json = ?11 WHERE id = ?1",
+             findings_json = ?11, status = ?12, error = ?13, result_json = ?14, ts = ?15 WHERE id = ?1",
             rusqlite::params![
                 id,
                 result.summary.bootkit_detected as i64,
@@ -155,6 +143,15 @@ impl ScanStore {
                 result.summary.low_count as i64,
                 result.summary.info_count as i64,
                 serde_json::to_string(&result.findings)?,
+                result.status.as_str(),
+                if result.status == barzakh_core::ScanStatus::Complete { None } else {
+                    Some(result.errors.iter().cloned().chain(result.detector_runs.iter()
+                        .filter(|r| matches!(r.status, barzakh_core::DetectorStatus::Error | barzakh_core::DetectorStatus::InsufficientEvidence))
+                        .filter_map(|r| r.error.as_ref().map(|e| format!("{}: {e}", r.detector))))
+                        .collect::<Vec<_>>().join("; "))
+                },
+                serde_json::to_string(result)?,
+                result.scan_info.start_time,
             ],
         )?;
         if changed == 0 {
@@ -194,6 +191,18 @@ impl ScanStore {
             |row| row.get(0),
         )?;
         Ok(serde_json::from_str(&json)?)
+    }
+
+    /// Full outcomes and evidence, absent only for pre-hardening records.
+    pub fn get_result(&self, id: i64) -> anyhow::Result<Option<ScanResult>> {
+        let json: Option<String> =
+            self.conn
+                .query_row("SELECT result_json FROM scans WHERE id = ?1", [id], |row| {
+                    row.get(0)
+                })?;
+        json.map(|s| serde_json::from_str(&s))
+            .transpose()
+            .map_err(Into::into)
     }
 
     /// Fetch the full scan record for one scan.
@@ -320,6 +329,11 @@ mod tests {
             .filter(|f| f.severity == Severity::Critical)
             .count();
         ScanResult {
+            status: barzakh_core::ScanStatus::Complete,
+            detector_runs: Vec::new(),
+            errors: Vec::new(),
+            input_sha256: None,
+            event_log_sha256: None,
             summary: ScanSummary {
                 total_findings: findings.len(),
                 critical_count,
@@ -412,6 +426,28 @@ mod tests {
     fn missing_scan_errors() {
         let store = ScanStore::open(Path::new(":memory:")).unwrap();
         assert!(store.get(999).is_err());
+    }
+
+    #[test]
+    fn failed_and_partial_results_round_trip_without_becoming_complete() {
+        let mut store = ScanStore::open(Path::new(":memory:")).unwrap();
+        for status in [
+            barzakh_core::ScanStatus::Failed,
+            barzakh_core::ScanStatus::Partial,
+        ] {
+            let mut result = sample_result("missing.bin", Vec::new());
+            result.status = status;
+            result.errors.push("required evidence missing".into());
+            let id = store.record(&result).unwrap();
+            assert_eq!(store.get(id).unwrap().status, status.as_str());
+            assert!(store
+                .get(id)
+                .unwrap()
+                .error
+                .unwrap()
+                .contains("evidence missing"));
+            assert_eq!(store.get_result(id).unwrap().unwrap().status, status);
+        }
     }
 
     #[test]
