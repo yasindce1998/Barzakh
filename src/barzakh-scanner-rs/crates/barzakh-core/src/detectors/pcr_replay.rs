@@ -22,6 +22,9 @@ impl HashAlgorithm {
     pub fn hash(&self, data: &[u8]) -> Vec<u8> {
         match self {
             Self::Sha1 => {
+                // sha1 0.11 implements digest 0.11's `Digest` trait, which is
+                // distinct from the digest 0.10 trait re-exported by sha2.
+                use sha1::Digest as _;
                 let mut hasher = Sha1::new();
                 hasher.update(data);
                 hasher.finalize().to_vec()
