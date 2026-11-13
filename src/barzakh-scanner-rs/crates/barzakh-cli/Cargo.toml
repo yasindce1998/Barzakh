@@ -28,7 +28,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 anyhow = "1"
 colored = "2"
 indicatif = "0.18"
-tabled = "0.16"
+tabled = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 # cargo-binstall: release assets are raw binaries named
