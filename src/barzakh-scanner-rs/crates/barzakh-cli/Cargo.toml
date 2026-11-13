@@ -27,7 +27,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 anyhow = "1"
 colored = "2"
-indicatif = "0.17"
+indicatif = "0.18"
 tabled = "0.16"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
