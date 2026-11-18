@@ -24,7 +24,7 @@ jobs:
           sha256sum fuzz/Cargo.lock > /tmp/fuzz-lock.sha256
           CARGO_NET_OFFLINE=true cargo +nightly-2026-10-01 fuzz run parsers -- -max_total_time=600 -max_len=65536 -rss_limit_mb=2048 -dict=fuzz/parsers.dict
           sha256sum --check /tmp/fuzz-lock.sha256
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: parser-fuzz-regressions

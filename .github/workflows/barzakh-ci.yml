@@ -89,7 +89,7 @@ jobs:
           build -a X64 -t GCC5 -p BootkitPkg/BootkitPkg.dsc
       
       - name: Upload Bootkit Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bootkit-binaries
           path: edk2/Build/BootkitPkg/DEBUG_GCC5/X64/*.efi
@@ -169,7 +169,7 @@ jobs:
           build -a AARCH64 -t GCC5 -p BootkitPkg/BootkitPkgAarch64.dsc
 
       - name: Upload AARCH64 Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bootkit-aarch64-binaries
           path: edk2/Build/BootkitPkgAarch64/DEBUG_GCC5/AARCH64/*.efi
@@ -204,7 +204,7 @@ jobs:
           [ "$VBR_SIZE" -eq 512 ] || { echo "ERROR: VBR is not 512 bytes"; exit 1; }
 
       - name: Upload Legacy Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: legacy-bootkit-binaries
           path: build/legacy/*.bin
@@ -233,7 +233,7 @@ jobs:
         run: cargo build --workspace --release --locked
 
       - name: Upload Scanner Binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: barzakh-scanner-rs
           path: src/barzakh-scanner-rs/target/release/barzakh-scanner
@@ -376,7 +376,7 @@ jobs:
 
       - name: Upload Range Artifacts
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: range-artifacts
           path: src/barzakh-scanner-rs/build/range/
@@ -438,7 +438,7 @@ jobs:
 
       - name: Upload E2E Artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qemu-e2e-results
           path: |
@@ -462,7 +462,7 @@ jobs:
           cp README.md docs/_build/html/ 2>/dev/null || true
 
       - name: Upload Documentation
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: documentation
           path: docs/_build/html
@@ -506,7 +506,7 @@ jobs:
           echo "- Documentation" >> RELEASE_NOTES.md
       
       - name: Upload Release Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-package
           path: barzakh-release.tar.gz
